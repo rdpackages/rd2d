@@ -21,7 +21,7 @@ install.packages('rd2d')
 
 - Help: [R Manual](https://cran.r-project.org/web/packages/rd2d/rd2d.pdf), [CRAN repository](https://cran.r-project.org/package=rd2d).
 
-- Replication: [R-script](), [data]().
+- Replication: [R-script](R/rd2d_illustration.R), [data](R/rd2d_data.csv).
 
 
 ## Repository
