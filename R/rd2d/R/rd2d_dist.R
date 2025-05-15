@@ -668,10 +668,10 @@ summary.rd2d.dist <- function(object, ...) {
   } else if (output == "bw") {
     if (eval.specified) {
       headers <- c("ID", "b1", "b2", "h0", "h1", "Nh0", "Nh1")
-      col_widths <- c(4, sep[3], sep[3], sep[3], sep[3], sep[3], sep[3], sep[3], sep[3])
+      col_widths <- c(4, sep[3], sep[3], sep[3], sep[3], sep[3], sep[3])
     } else {
       headers <- c("ID", "h0", "h1", "Nh0", "Nh1")
-      col_widths <- c(4, sep[3], sep[3], sep[3], sep[3], sep[3], sep[3])
+      col_widths <- c(4, sep[3], sep[3], sep[3], sep[3])
     }
 
     cat(strrep("=", sum(col_widths)), "\n")

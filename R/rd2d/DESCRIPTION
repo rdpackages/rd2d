@@ -18,7 +18,7 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Maintainer: Ruiqi Rae Yu <rae.yu@princeton.edu>
 NeedsCompilation: no
-Packaged: 2025-05-12 20:57:21 UTC; yuruiqi
+Packaged: 2025-05-14 17:13:06 UTC; yuruiqi
 Author: Matias D. Cattaneo [aut],
   Rocio Titiunik [aut],
   Ruiqi Rae Yu [aut, cre]
