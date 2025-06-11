@@ -23,15 +23,15 @@ t <- data_rd2d$t
 
 result.rd2d <- rd2d(y, X, t, eval)
 
-CI.lower.biv <- result.rd2d$cb$CI.l
-CI.upper.biv <- result.rd2d$cb$CI.r
-CB.lower.biv <- result.rd2d$cb$CB.l
-CB.upper.biv <- result.rd2d$cb$CB.r
+CI.lower.biv <- result.rd2d$results$CI.lower
+CI.upper.biv <- result.rd2d$results$CI.upper
+CB.lower.biv <- result.rd2d$results$CB.lower
+CB.upper.biv <- result.rd2d$results$CB.upper
 
 ############################### Plot heatmaps ##################################
 
 # heat map for treatment effect
-data.plot <- cbind(eval, result.rd2d$tau.hat)
+data.plot <- cbind(eval, result.rd2d$results$Est.p)
 colnames(data.plot) <- c("x.1", "x.2", "tau.hat")
 
 # Function to interpolate points and color values between two consecutive points
@@ -93,7 +93,7 @@ ggsave("Results/heat-treatment_effect.png", plot_heat, width = 6, height = 5)
 
 # heatmap for p-value
 
-data.plot$p.value <- result.rd2d$pvalues
+data.plot$p.value <- result.rd2d$results$`P>|z|`
 data.plot$p.sig <- cut(data.plot$p.value,
                        breaks = c(0, 0.001, 0.01, 0.05, 0.1, 1),
                        labels = c("p < 0.001", "0.001 ≤ p < 0.01", "0.01 ≤ p < 0.05", "0.05 ≤ p < 0.1", "p ≥ 0.1"))

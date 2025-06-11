@@ -135,10 +135,10 @@ rdbw2d_dist_bw <- function(Y, D, p = 1, kernel, deriv.vec = NULL,
       bw.min.1   <- sorted.1[min(bwcheck,length(sorted.1))]
       bw.max.0   <- sorted.0[length(sorted.0)]
       bw.max.1   <- sorted.1[length(sorted.1)]
-      dn.0     <- max(dn, bw.min.0)
-      dn.1     <- max(dn, bw.min.1)
-      dn.0     <- min(dn, bw.max.0)
-      dn.1     <- min(dn, bw.max.1)
+      dn.0     <- max(dn.0, bw.min.0)
+      dn.1     <- max(dn.1, bw.min.1)
+      dn.0     <- min(dn.0, bw.max.0)
+      dn.1     <- min(dn.1, bw.max.1)
     }
 
     w.0   <- W.fun(dat.nearby[dat.nearby$d == FALSE,]$dist/dn.0, kernel)/(dn.0^2)

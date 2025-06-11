@@ -7,8 +7,8 @@
 \description{
 This package implements estimation and inference procedures for boundary regression discontinuity (RD) designs
 using local polynomial methods, based on either bivariate coordinates or distance-based approaches.
-Methods are developed in Cattaneo, Titiunik, and Yu (2025)
-\url{https://mdcattaneo.github.io/papers/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}.
+Methods are developed in \href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, Titiunik, and Yu (2025a)}. A companion software article is available
+at \href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_rd2d.pdf}{Cattaneo, Titiunik, and Yu (2025b)}.
 
 Included functions are: \link{rd2d} for inference and estimation based on bivariate coordinates,
 \link{rdbw2d} for data-driven bandwidth selection based on bivariate coordinates,
@@ -21,12 +21,14 @@ Related Stata, R, and Python packages useful for inference in RD designs are des
 
 \href{ https://rdpackages.github.io/}{ https://rdpackages.github.io/}
 
-For an introduction to regression discontinuity design, see \href{https://www.cambridge.org/core/elements/practical-introduction-to-regression-discontinuity-designs/C6A70A32359115510AAC370A7869AE2F}{Cattaneo (2024)} and references therein.
+For an introduction to regression discontinuity design, see \href{https://www.cambridge.org/core/elements/practical-introduction-to-regression-discontinuity-designs/C6A70A32359115510AAC370A7869AE2F}{Cattaneo, Idrobo, Titiunik (2024)} and references therein.
 }
 \references{
 \itemize{
-\item{\href{https://mdcattaneo.github.io/papers/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025).}
+\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025a).}
 Estimation and Inference in Boundary Discontinuity Designs}
+\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_rd2d.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025b).}
+rd2d: Causal Inference in Boundary Discontinuity Designs}
 \item{\href{https://www.cambridge.org/core/elements/practical-introduction-to-regression-discontinuity-designs/C6A70A32359115510AAC370A7869AE2F}{Cattaneo, M. D., Idrobo, N., Titiunik, R. (2024).}
 A Practical Introduction to Regression Discontinuity Designs: Extensions}
 }

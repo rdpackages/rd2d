@@ -12,7 +12,7 @@
 \item{...}{Optional arguments. Supported options include:
 \itemize{
 \item \code{subset}: Integer vector of indices of evaluation points to display. Defaults to all evaluation points.
-\item \code{sep}: Integer. Controls spacing in the output. Default is \code{8}.
+\item \code{sep}: Integer vector of controlling the column widths of the output table. Default is \code{c(4, rep(8, 6))}.
 }}
 }
 \value{

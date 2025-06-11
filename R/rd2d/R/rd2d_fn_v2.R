@@ -86,8 +86,7 @@ rdbw2d_bw_v2 <- function(dat.centered, p, vec, dn, bn.1, bn.2 = NULL, vce, kerne
   # Variance and coefficients for a linear combination of (p+1)-th derivatives.
   if (kernel_type == "prod"){
     w.v <- W.fun(dat.centered$x.1/c(dn), kernel) * W.fun(dat.centered$x.2/c(dn), kernel) / c(dn^2)
-  }
-  else{
+  } else{
     w.v <- W.fun(dat.centered$dist/c(dn), kernel)/c(dn^2)
   }
 

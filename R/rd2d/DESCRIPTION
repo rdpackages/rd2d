@@ -1,7 +1,7 @@
 Package: rd2d
 Type: Package
 Title: Boundary Regression Discontinuity Designs
-Version: 0.0.1
+Version: 0.0.2
 Authors@R: c(
     person(given = "Matias D.", family = "Cattaneo", role = "aut"),
     person(given = "Rocio", family = "Titiunik", role = "aut"),
@@ -11,14 +11,14 @@ Description: Provides estimation and inference procedures for boundary regressio
     using local polynomial methods, based on either bivariate coordinates or distance-based approaches.
     Methods are developed in Cattaneo, Titiunik, and Yu (2025) 
     <https://mdcattaneo.github.io/papers/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf>.
-Imports: MASS, expm, ggplot2
+Imports: MASS, expm, ggplot2, stringr
 License: GPL-2
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Maintainer: Ruiqi Rae Yu <rae.yu@princeton.edu>
 NeedsCompilation: no
-Packaged: 2025-05-14 17:13:06 UTC; yuruiqi
+Packaged: 2025-06-10 19:42:19 UTC; yuruiqi
 Author: Matias D. Cattaneo [aut],
   Rocio Titiunik [aut],
   Ruiqi Rae Yu [aut, cre]

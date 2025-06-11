@@ -17,12 +17,12 @@ if \code{FALSE} (default), displays pointwise confidence intervals.
 Defaults to all evaluation points.
 \item \code{output}: Character. Use \code{"main"} to display estimation results,
 or \code{"bw"} to display bandwidth information. Default is \code{"main"}.
-\item \code{sep}: Integer vector of length three. Controls spacing in the output.
-\code{sep[1]} controls spacing for the columns of boundary points, estimation,
-z-value, and p-value in the \code{"main"} table.
-\code{sep[2]} controls spacing for confidence intervals (or bands) in the \code{"main"} table.
-\code{sep[3]} controls spacing for the columns in the \code{"bw"} table.
-Default is \code{c(7, 17, 8)}.
+\item \code{sep_main}: Integer vector of length seven controlling the column widths of the output table when \code{output = "main"}.
+Default is \code{c(4, 7, 7, 7, 7, 7, 17)}. When \code{b} is not provided, output table has five columns, the second and third entry
+of \code{sep_main} are not used, and can be any place holder.
+\item \code{sep_bw}: Integer vector of length seven controlling the column widths of the output table when \code{output = "bw"}.
+Default is \code{c(4, rep(8,6))}. When \code{b} is not provided, output table has five columns, the second and third entry
+of \code{sep_bw} are not used, and can be any place holder.
 }}
 }
 \value{

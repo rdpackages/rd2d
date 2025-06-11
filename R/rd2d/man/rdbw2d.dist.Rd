@@ -48,17 +48,17 @@ non-negative values means data point in treatment group and negative values mean
 Options:
 \describe{
 \item{\code{"hc0"}}{Heteroskedasticity-robust variance estimator without small sample adjustment (White robust).}
-\item{\code{"hc1"}}{Heteroskedasticity-robust variance estimator with degrees-of-freedom correction. (default)}
+\item{\code{"hc1"}}{Heteroskedasticity-robust variance estimator with degrees-of-freedom correction (default).}
 \item{\code{"hc2"}}{Heteroskedasticity-robust variance estimator using leverage adjustments.}
 \item{\code{"hc3"}}{More conservative heteroskedasticity-robust variance estimator (similar to jackknife correction).}
 }}
 
-\item{bwcheck}{If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} unique observations are used. Default is \code{50 + p + 1}.}
+\item{bwcheck}{If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} observations are used. The program stops with “not enough observations” if sample size \eqn{N} < \code{bwcheck}. Default is \code{50 + p + 1}.}
 
 \item{masspoints}{Strategy for handling mass points in the running variable.
 Options:
 \describe{
-\item{\code{"check"}}{(default) Check for repeated values and adjust inference if needed.}
+\item{\code{"check"}}{Check for repeated values and adjust inference if needed (default).}
 \item{\code{"adjust"}}{Adjust bandwidths to guarantee a sufficient number of unique support points.}
 \item{\code{"off"}}{Ignore mass points completely.}
 }}
@@ -83,12 +83,12 @@ An object of class \code{"rdbw2d.dist"}, containing:
 }
 }
 \item{\code{mseconsts}}{Data frame of intermediate bias and variance constants used for MSE/IMSE calculations.}
-\item{\code{opt}}{A list of options and settings used in estimation, including \code{p}, \code{kernel}, sample size \eqn{N}, and user-specified choices.}
+\item{\code{opt}}{List of options used in the function call.}
 }
 }
 \description{
 \code{rdbw2d.dist} implements bandwidth selector for distance-based local polynomial boundary regression discontinuity (RD) point estimators with robust bias-corrected pointwise confidence intervals and
-uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025). For robust bias-correction, see Calonico, Cattaneo and Titiunik (2014).
+uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025a) with a companion software article Cattaneo, Titiunik and Yu (2025b). For robust bias-correction, see Calonico, Cattaneo, Titiunik (2014).
 }
 \examples{
 set.seed(123)
@@ -127,8 +127,12 @@ summary(bws)
 }
 \references{
 \itemize{
-\item{\href{https://mdcattaneo.github.io/papers/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025).}
+\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025a).}
 Estimation and Inference in Boundary Discontinuity Designs}
+\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_rd2d.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025b).}
+rd2d: Causal Inference in Boundary Discontinuity Designs}
+\item{\href{https://rdpackages.github.io/references/Calonico-Cattaneo-Titiunik_2014_ECMA.pdf}{Calonico, S., Cattaneo, M. D., Titiunik, R. (2014)}
+Robust Nonparametric Confidence Intervals for Regression-Discontinuity Designs}
 }
 }
 \seealso{

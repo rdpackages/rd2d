@@ -21,10 +21,10 @@ t <- data_rd2d$t
 
 result.rd2d <- rd2d(y, X, t, eval)
 
-CI.lower.biv <- result.rd2d$cb$CI.l
-CI.upper.biv <- result.rd2d$cb$CI.r
-CB.lower.biv <- result.rd2d$cb$CB.l
-CB.upper.biv <- result.rd2d$cb$CB.r
+CI.lower.biv <- result.rd2d$results$CI.lower
+CI.upper.biv <- result.rd2d$results$CI.upper
+CB.lower.biv <- result.rd2d$results$CB.lower
+CB.upper.biv <- result.rd2d$results$CB.upper
 
 ############## Point Estimation and Confidence Interval / Bands ################
 
@@ -33,7 +33,7 @@ indx <- c(1:neval)
 temp_plot <- ggplot() + theme_bw()
 
 # Point estimation
-df <- data.frame(indx = indx, y = result.rd2d$tau.hat, label = rep(c("Bivariate"), each = length(indx)))
+df <- data.frame(indx = indx, y = result.rd2d$results$Est.p, label = rep(c("Bivariate"), each = length(indx)))
 temp_plot <- temp_plot + geom_point(data = df,
                                     aes(x = indx, y = y, color = label, shape = label, fill = label, linetype = label))
 

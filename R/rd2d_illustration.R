@@ -26,6 +26,8 @@ summary(result.rd2d)
 # options for summary function
 summary(result.rd2d, subset = c(1,5,10,15,21,25,30,35,40)) # show selected evaluation points
 summary(result.rd2d, subset = c(1,5,10,15,21,25,30,35,40), CBuniform = TRUE) # show confidence bands
+neval <- nrow(eval)
+summary(result.rd2d, subset = c(1,5,10,15,21,25,30,35,40), AATE = rep(1,neval)) # show aggregated average treatment effect
 summary(result.rd2d, subset = c(1,5,10,15,21,25,30,35,40), output = "bw") # show bandwidth information
 
 # bandwidth selection
@@ -39,6 +41,7 @@ result.dist <- rd2d.dist(y,D, b = eval)
 print(result.dist)
 summary(result.dist, subset = c(1,5,10,15,21,25,30,35,40))
 summary(result.dist, subset = c(1,5,10,15,21,25,30,35,40), CBuniform = TRUE)
+summary(result.dist, subset = c(1,5,10,15,21,25,30,35,40), AATE = rep(1,neval))
 summary(result.dist, subset = c(1,5,10,15,21,25,30,35,40), output = "bw")
 
 result.dist.kinkon <- rd2d.dist(y,D, b = eval, kink = "on") # kink adjustment
@@ -51,3 +54,4 @@ summary(bws.dist,subset = c(1,5,10,15,21,25,30,35,40))
 
 bws.dist.kinkon <- rdbw2d.dist(y,D, kink = "on")
 summary(bws.dist.kinkon,subset = c(1,5,10,15,21,25,30,35,40))
+

@@ -3,11 +3,11 @@
 #' @title Local Polynomial RD Estimation on Distance-Based Running Variables
 #'
 #' @description
-#' \code{rd2d.dist} implements distance-based local polynomial boundary regression discontinuity (RD) point estimators with robust bias-corrected pointwise confidence intervals and 
-#' uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025). For robust bias-correction, see Calonico, Cattaneo and Titiunik (2014).
-#' 
+#' \code{rd2d.dist} implements distance-based local polynomial boundary regression discontinuity (RD) point estimators with robust bias-corrected pointwise confidence intervals and
+#' uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025a) with a companion software article Cattaneo, Titiunik and Yu (2025b). For robust bias-correction, see Calonico, Cattaneo, Titiunik (2014).
+#'
 #' Companion commands are: \code{rdbw2d.dist} for data-driven bandwidth selection.
-#' 
+#'
 #' For other packages of RD designs, visit
 #' <https://rdpackages.github.io/>
 #' @param Y Dependent variable; a numeric vector of length \eqn{N}, where \eqn{N} is the sample size.
@@ -22,11 +22,11 @@
 #' @param cbands Logical. If \code{TRUE}, also compute uniform confidence bands (default is \code{FALSE}).
 #' @param side Type of confidence interval. Options: \code{"two"} (two-sided, default), \code{"left"} (left tail), or \code{"right"} (right tail).
 #' @param repp Number of bootstrap repetitions used for critical value simulation. Default is \code{1000}.
-#' @param bwselect Bandwidth selection strategy. Options: 
+#' @param bwselect Bandwidth selection strategy. Options:
 #' \itemize{
-#' \item \code{"mserd"}. One common MSE-optimal bandwidth selector for the boundary RD treatment effect estimator for each evaluation point (default). 
+#' \item \code{"mserd"}. One common MSE-optimal bandwidth selector for the boundary RD treatment effect estimator for each evaluation point (default).
 #' \item \code{"imserd"}. IMSE-optimal bandwidth selector for the boundary RD treatment effect estimator based on all evaluation points.
-#' \item \code{"msetwo"}. Two different MSE-optimal bandwidth selectors (control and treatment) for the boundary RD treatment effect estimator for each evaluation point. 
+#' \item \code{"msetwo"}. Two different MSE-optimal bandwidth selectors (control and treatment) for the boundary RD treatment effect estimator for each evaluation point.
 #' \item \code{"imsetwo"}. Two IMSE-optimal bandwidth selectors (control and treatment) for the boundary RD treatment effect estimator based on all evaluation points.
 #' \item \code{"user provided"}. User-provided bandwidths. If \code{h} is not \code{NULL}, then \code{bwselect} is overwritten to \code{"user provided"}.
 #' }
@@ -34,27 +34,27 @@
 #' Options:
 #' \describe{
 #'   \item{\code{"hc0"}}{Heteroskedasticity-robust variance estimator without small sample adjustment (White robust).}
-#'   \item{\code{"hc1"}}{Heteroskedasticity-robust variance estimator with degrees-of-freedom correction. (default)}
+#'   \item{\code{"hc1"}}{Heteroskedasticity-robust variance estimator with degrees-of-freedom correction (default).}
 #'   \item{\code{"hc2"}}{Heteroskedasticity-robust variance estimator using leverage adjustments.}
 #'   \item{\code{"hc3"}}{More conservative heteroskedasticity-robust variance estimator (similar to jackknife correction).}
 #' }
-#' @param rbc Logical. Whether to apply robust bias correction. Options: \code{"on"} (default) or \code{"off"}. When \code{kink = off}, turn on \code{rbc} means setting \code{q} to \code{p + 1}. 
+#' @param rbc Logical. Whether to apply robust bias correction. Options: \code{"on"} (default) or \code{"off"}. When \code{kink = off}, turn on \code{rbc} means setting \code{q} to \code{p + 1}.
 #' When \code{kink = on}, turn on \code{rbc} means shrinking the bandwidth selector to be proportional to \eqn{N^{-1/3}}.
-#' @param bwcheck If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} unique observations are used. Default is \code{50 + p + 1}.
+#' @param bwcheck If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} observations are used. The program stops with “not enough observations” if sample size \eqn{N} < \code{bwcheck}. Default is \code{50 + p + 1}.
 #' @param masspoints Strategy for handling mass points in the running variable.
 #' Options:
 #' \describe{
-#'   \item{\code{"check"}}{(default) Check for repeated values and adjust inference if needed.}
+#'   \item{\code{"check"}}{Check for repeated values and adjust inference if needed (default).}
 #'   \item{\code{"adjust"}}{Adjust bandwidths to guarantee a sufficient number of unique support points.}
 #'   \item{\code{"off"}}{Ignore mass points completely.}
 #' }
-#' @param C Cluster ID variable used for cluster-robust variance estimation with degrees-of-freedom weights.Default is \code{C = NULL}.
+#' @param C Cluster ID variable used for cluster-robust variance estimation. Default is \code{C = NULL}.
 #' @param scaleregul Scaling factor for the regularization term in bandwidth selection. Default is \code{1}.
 #' @param cqt Constant controlling subsample fraction for initial bias estimation. Default is \code{0.5}.
 #'
 #' @return An object of class \code{"rd2d.dist"}, a list containing:
 #' \describe{
-#'   \item{\code{main}}{Data frame of point estimates, standard errors, confidence intervals, and bandwidths:
+#'   \item{\code{results}}{A data frame with point estimates, variances, p-values, confidence intervals, confidence bands, and bandwidths at each evaluation point.
 #'     \describe{
 #'       \item{\code{b1}}{First coordinate of the evaluation point.}
 #'       \item{\code{b2}}{Second coordinate of the evaluation point.}
@@ -73,17 +73,17 @@
 #'       \item{\code{Nh1}}{Effective sample size for treatment group.}
 #'     }
 #'   }
-#'   \item{\code{main.A0}}{Summary table for the control group only.}
-#'   \item{\code{main.A1}}{Summary table for the treatment group only.}
+#'   \item{\code{results.A0}}{Same structure as \code{results} but for control group outcomes.}
+#'   \item{\code{results.A1}}{Same structure as \code{results} but for treatment group outcomes.}
 #'   \item{\code{tau.hat}}{Vector of point estimates \eqn{\widehat{\tau}_p(\mathbf{b})}.}
 #'   \item{\code{se.hat}}{Standard errors corresponding to \eqn{\widehat{\tau}_p(\mathbf{b})}.}
 #'   \item{\code{cb}}{Confidence intervals and uniform bands.}
-#'   \item{\code{cov.us}}{Covariance matrix used to construct uniform bands.}
-#'   \item{\code{opt}}{A list of estimation options (e.g., \code{p}, \code{q}, \code{kernel}, \code{level}, etc.) and internal variables such as sample size \eqn{N}.}
+#'   \item{\code{cov.q}}{Covariance matrix for bias-corrected estimates \eqn{\widehat{\tau}_{\text{dist},q}(\mathbf{b})} for all point evaluations \eqn{\mathbf{b}}.}
+#'   \item{\code{opt}}{List of options used in the function call.}
 #' }
 #'
 #' @seealso \code{\link{rdbw2d.dist}}, \code{\link{rd2d}}, \code{\link{print.rd2d.dist}}, \code{\link{summary.rd2d.dist}}
-#' 
+#'
 #' @author
 #' Matias D. Cattaneo, Princeton University. \email{cattaneo@princeton.edu} \cr
 #' Rocío Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
@@ -91,10 +91,14 @@
 #'
 #' @references
 #' \itemize{
-#' \item{\href{https://mdcattaneo.github.io/papers/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025).}
+#' \item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025a).}
 #' Estimation and Inference in Boundary Discontinuity Designs}
+#' \item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_rd2d.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025b).}
+#' rd2d: Causal Inference in Boundary Discontinuity Designs}
+#' \item{\href{https://rdpackages.github.io/references/Calonico-Cattaneo-Titiunik_2014_ECMA.pdf}{Calonico, S., Cattaneo, M. D., Titiunik, R. (2014)}
+#' Robust Nonparametric Confidence Intervals for Regression-Discontinuity Designs}
 #' }
-#' 
+#'
 #' @examples
 #' set.seed(123)
 #' n <- 5000
@@ -239,6 +243,14 @@ rd2d.dist <- function(Y, D, h = NULL, b = NULL, p = 1, q = 2, kink = c("off", "o
   if (kernel=="triangular"   | kernel=="tri") kernel.type <- "Triangular"
   if (kernel=="uniform"      | kernel=="uni") kernel.type <- "Uniform"
   if (kernel=="gaussian"     | kernel=="gau") kernel.type <- "Gaussian"
+
+  min_sample_size <- bwcheck
+  if (is.null(bwcheck)) min_sample_size <- 50 + p + 1
+
+  if (N < min_sample_size){
+    warning("Not enough observations to perform RDD calculations. ")
+    stop()
+  }
 
   ################################ Bandwidth ###################################
 
@@ -450,15 +462,15 @@ rd2d.dist <- function(Y, D, h = NULL, b = NULL, p = 1, q = 2, kink = c("off", "o
 
   rdmodel <- "rd2d.dist"
 
-  out <- list(main = main, main.A0 = main.A0, main.A1 = main.A1,
+  out <- list(results = main, results.A0 = main.A0, results.A1 = main.A1,
               opt=list(b = eval, p = p, q = q, kernel=kernel.type, kink = kink, N=N, N.0 = N.0, rbc = rbc,
                        N.1 = N.1, M = M.vec, M.0 = M.0.vec, M.1 = M.1.vec, neval=neval, bwselect = bwselect,
                        vce = vce, bwcheck = bwcheck, masspoints = masspoints, C = C, clustered = clustered,
-                       scaleregul = scaleregul, cqt = cqt, 
+                       scaleregul = scaleregul, cqt = cqt,
                        level = level, repp = repp, side = side,cbands = cbands,
                        h0 = hfull[,1], h1 = hfull[,2], h0.rbc = hfull.rbc[,1], h1.rbc = hfull.rbc[,2],
                        Nh0 = eN0.p, Nh1 = eN1.p),
-              tau.hat = tau.hat.p, tau.hat.q = tau.hat.q, se.hat = se.hat.p, cov.us=cov.us, cb = cb.hat.q, pvalues = pvalues, zvalues = zvalues, rdmodel = rdmodel)
+              cov.q=cov.us, rdmodel = rdmodel)
   out$call   <- match.call()
   class(out) <- "rd2d.dist"
 
@@ -488,7 +500,7 @@ rd2d.dist <- function(Y, D, h = NULL, b = NULL, p = 1, q = 2, kink = c("off", "o
 #' Supported methods: \code{\link{print.rd2d.dist}}, \code{\link{summary.rd2d.dist}}.
 #'
 #' @export
-#' 
+#'
 print.rd2d.dist <- function(x,...) {
 
   cat(paste(x$rdmodel, "\n", sep = ""))
@@ -522,12 +534,12 @@ print.rd2d.dist <- function(x,...) {
 #'       Defaults to all evaluation points.
 #'     \item \code{output}: Character. Use \code{"main"} to display estimation results,
 #'       or \code{"bw"} to display bandwidth information. Default is \code{"main"}.
-#'     \item \code{sep}: Integer vector of length three. Controls spacing in the output.
-#'       \code{sep[1]} controls spacing for the columns of boundary points, estimation,
-#'       z-value, and p-value in the \code{"main"} table.
-#'       \code{sep[2]} controls spacing for confidence intervals (or bands) in the \code{"main"} table.
-#'       \code{sep[3]} controls spacing for the columns in the \code{"bw"} table.
-#'       Default is \code{c(7, 17, 8)}.
+#'     \item \code{sep_main}: Integer vector of length seven controlling the column widths of the output table when \code{output = "main"}.
+#'       Default is \code{c(4, 7, 7, 7, 7, 7, 17)}. When \code{b} is not provided, output table has five columns, the second and third entry
+#'       of \code{sep_main} are not used, and can be any place holder.
+#'     \item \code{sep_bw}: Integer vector of length seven controlling the column widths of the output table when \code{output = "bw"}.
+#'       Default is \code{c(4, rep(8,6))}. When \code{b} is not provided, output table has five columns, the second and third entry
+#'       of \code{sep_bw} are not used, and can be any place holder.
 #'   }
 #'
 #' @return No return value. This function is called for its side effects: it prints a formatted summary of \code{\link{rd2d.dist}} results.
@@ -548,31 +560,44 @@ summary.rd2d.dist <- function(object, ...) {
     x <- object
 
     args <- list(...)
-    
+
     if (is.null(args[['CBuniform']])) {
       CBuniform <- FALSE
     } else {
       CBuniform <- TRUE
     }
-    
+
     if (is.null(args[['subset']])) {
       subset <- NULL
     } else {
       subset <- args[['subset']]
     }
-    
+
     if (is.null(args[['output']])) {
-      output <- "main" 
+      output <- "main"
     } else {
       output <- args[['output']]
     }
-    
-    if (is.null(args[['sep']])) {
-      sep <- c(7,17,8)
+
+    if (is.null(args[['sep_main']])) {
+      sep_main <- c(4, 7, 7, 7, 7, 7, 17)
     } else {
-      sep <- args[['sep']]
+      sep_main <- args[['sep_main']]
     }
-    
+
+    if (is.null(args[['sep_bw']])) {
+      sep_bw <- c(4, rep(8,6))
+    } else {
+      sep_bw <- args[['sep_bw']]
+    }
+
+    if (is.null(args[['AATE']])){
+      AATE <- NULL
+    } else {
+      AATE <- args[['AATE']]
+      AATE <- AATE / sum(AATE)
+    }
+
     cat(paste(x$rdmodel, "\n", sep = ""))
     cat(paste("\n", sep = ""))
 
@@ -591,16 +616,39 @@ summary.rd2d.dist <- function(object, ...) {
   results <- data.frame(
     b1 = x$opt$b[, 1],
     b2 = x$opt$b[, 2],
-    Coef = x$tau.hat,
-    Zvalues = x$zvalues,
-    Pvalues = x$pvalues,
-    CILower = if (CBuniform) x$cb$CB.l else x$cb$CI.l,
-    CIUpper = if (CBuniform) x$cb$CB.r else x$cb$CI.r,
+    Coef = x$results$Est.p,
+    Zvalues = x$results$z,
+    Pvalues = x$results[["P>|z|"]],
+    CILower = if (CBuniform) x$results$CB.lower else x$results$CI.lower,
+    CIUpper = if (CBuniform) x$results$CB.upper else x$results$CI.upper,
     h0 = x$opt$h0,
     h1 = x$opt$h1,
     Nh0 = x$opt$Nh0,
     Nh1 = x$opt$Nh1
   )
+
+  if (!is.null(AATE)){
+    est_AATE <- sum(AATE * x$results$Est.p)
+    se_AATE <- sqrt(AATE %*% x$cov.q %*% AATE)[1,1]
+    zvalue_AATE <- sum(AATE * x$results$Est.q)/se_AATE
+    pvalue_AATE <- 2 * pnorm(abs(zvalue_AATE),lower.tail = FALSE)
+
+    if (x$opt$side == "two"){
+      zval <- qnorm((x$opt$level + 100)/ 200)
+      CI.lower_AATE <- sum(AATE * x$results$Est.q) - zval * se_AATE
+      CI.upper_AATE <- sum(AATE * x$results$Est.q) + zval * se_AATE
+    }
+    if (x$opt$side == "left"){
+      zval <- qnorm(x$opt$level / 100)
+      CI.upper_AATE <- x$results$Est.q + zval * se_AATE
+      CI.lower_AATE <- rep(-Inf, length(CI.upper_AATE))
+    }
+    if (x$opt$side == "right"){
+      zval <- qnorm(x$opt$level / 100)
+      CI.lower_AATE <- x$results$Est.q - zval * se_AATE
+      CI.upper_AATE <- rep(Inf, length(CI.lower_AATE))
+    }
+  }
 
   eval.specified <- !all(is.na(x$opt$b)) # TRUE if at least one b is not NA
 
@@ -617,10 +665,10 @@ summary.rd2d.dist <- function(object, ...) {
   if (output == "main") {
     if (eval.specified) {
       headers <- c("ID", "b1", "b2", "Est.", "z", "P > |z|", sprintf("%d%% CI", x$opt$level))
-      col_widths <- c(4, sep[1], sep[1], sep[1], sep[1], sep[1], sep[2])
+      col_widths <- sep_main
     } else {
       headers <- c("ID", "Est.", "z", "P > |z|", sprintf("%d%% CI", x$opt$level))
-      col_widths <- c(4, sep[1], sep[1], sep[1], sep[2])
+      col_widths <- sep_main[c(1,4,5,6,7)]
     }
     if (CBuniform) {
       headers[length(headers)] <- sprintf("%d%% Unif. CB", x$opt$level)
@@ -663,29 +711,55 @@ summary.rd2d.dist <- function(object, ...) {
         cat(paste(row_vals, collapse = "  "), "\n")
       }
     }
+    if (!is.null(AATE)){
+      cat(paste(rep("-", sum(col_widths) + 2 * (length(headers) - 1)), collapse = ""), "\n")
+      if (eval.specified) {
+        index_formatted <- formatC("AATE", width = col_widths[1], format = "s")
+        b1_formatted <- formatC("", width = col_widths[2], format = "s")
+        b2_formatted <- formatC("", width = col_widths[3], format = "s")
+        coef_formatted <- formatC(est_AATE, format = "f", digits = 4, width = col_widths[4])
+        zvalues_formatted <- formatC(zvalue_AATE, format = "f", digits = 4, width = col_widths[5])
+        pvalues_formatted <- formatC(pvalue_AATE, format = "f", digits = 4, width = col_widths[6])
+        ci_formatted <- formatC(paste0("[", formatC(CI.lower_AATE, format = "f", digits = 4),
+                                       ", ", formatC(CI.upper_AATE, format = "f", digits = 4), "]"),
+                                width = col_widths[7], format = "s")
+        row_vals <- c(index_formatted, b1_formatted, b2_formatted, coef_formatted, zvalues_formatted, pvalues_formatted, ci_formatted)
+      } else {
+        index_formatted <- formatC("AATE", width = col_widths[1], format = "s")
+        coef_formatted <- formatC(est_AATE, format = "f", digits = 4, width = col_widths[2])
+        zvalues_formatted <- formatC(zvalue_AATE, format = "f", digits = 4, width = col_widths[3])
+        pvalues_formatted <- formatC(pvalue_AATE, format = "f", digits = 4, width = col_widths[4])
+        ci_formatted <- formatC(paste0("[", formatC(CI.lower_AATE, format = "f", digits = 4),
+                                       ", ", formatC(CI.upper_AATE, format = "f", digits = 4), "]"),
+                                width = col_widths[5], format = "s")
+        row_vals <- c(index_formatted, coef_formatted, zvalues_formatted, pvalues_formatted, ci_formatted)
+      }
+
+      cat(paste(row_vals, collapse = "  "), "\n")
+    }
     cat(strrep("=", sum(col_widths) + 2 * (length(headers) - 1)), "\n")
 
   } else if (output == "bw") {
     if (eval.specified) {
       headers <- c("ID", "b1", "b2", "h0", "h1", "Nh0", "Nh1")
-      col_widths <- c(4, sep[3], sep[3], sep[3], sep[3], sep[3], sep[3])
+      col_widths <- sep_bw
     } else {
       headers <- c("ID", "h0", "h1", "Nh0", "Nh1")
-      col_widths <- c(4, sep[3], sep[3], sep[3], sep[3])
+      col_widths <- sep_bw[c(1,4,5,6,7)]
     }
 
     cat(strrep("=", sum(col_widths)), "\n")
     if (eval.specified) {
       group_headers <- c(
-        formatC("        Bdy Points", width = col_widths[1] + col_widths[2] + col_widths[3], format = "s", flag = "-"),
-        formatC("      Bandwidths", width = col_widths[4] + col_widths[5], format = "s", flag = "-"),
-        formatC("      Eff. N", width = col_widths[6] + col_widths[7], format = "s", flag = "-")
+        formatC(str_pad("Bdy Points", width = 2 + col_widths[2] + col_widths[3], side = "both"), width = col_widths[1] + col_widths[2] + col_widths[3], format = "s"),
+        formatC(str_pad("Bandwidths", width = 2 + col_widths[5], side = "both"), width = col_widths[4] + col_widths[5], format = "s"),
+        formatC(str_pad("Eff. N", width = 3 + col_widths[7], side = "both"), width = col_widths[6] + col_widths[7], format = "s")
       )
     } else {
       group_headers <- c(
         formatC("  ", width = col_widths[1], format = "s", flag = "-"),
-        formatC("   Bandwidths", width = col_widths[2] + col_widths[3], format = "s", flag = "-"),
-        formatC("      Eff. N", width = col_widths[4] + col_widths[5], format = "s", flag = "-")
+        formatC(str_pad("Bandwidths", width = 2 + col_widths[3], side = "both"), width = col_widths[2] + col_widths[3], format = "s"),
+        formatC(str_pad("Eff. N", width = 3 + col_widths[5], side = "both"), width = col_widths[4] + col_widths[5], format = "s")
       )
     }
     cat(paste(group_headers, collapse = ""), "\n")

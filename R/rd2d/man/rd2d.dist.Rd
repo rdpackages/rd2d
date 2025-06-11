@@ -66,7 +66,7 @@ rd2d.dist(
 Options:
 \describe{
 \item{\code{"hc0"}}{Heteroskedasticity-robust variance estimator without small sample adjustment (White robust).}
-\item{\code{"hc1"}}{Heteroskedasticity-robust variance estimator with degrees-of-freedom correction. (default)}
+\item{\code{"hc1"}}{Heteroskedasticity-robust variance estimator with degrees-of-freedom correction (default).}
 \item{\code{"hc2"}}{Heteroskedasticity-robust variance estimator using leverage adjustments.}
 \item{\code{"hc3"}}{More conservative heteroskedasticity-robust variance estimator (similar to jackknife correction).}
 }}
@@ -74,17 +74,17 @@ Options:
 \item{rbc}{Logical. Whether to apply robust bias correction. Options: \code{"on"} (default) or \code{"off"}. When \code{kink = off}, turn on \code{rbc} means setting \code{q} to \code{p + 1}.
 When \code{kink = on}, turn on \code{rbc} means shrinking the bandwidth selector to be proportional to \eqn{N^{-1/3}}.}
 
-\item{bwcheck}{If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} unique observations are used. Default is \code{50 + p + 1}.}
+\item{bwcheck}{If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} observations are used. The program stops with “not enough observations” if sample size \eqn{N} < \code{bwcheck}. Default is \code{50 + p + 1}.}
 
 \item{masspoints}{Strategy for handling mass points in the running variable.
 Options:
 \describe{
-\item{\code{"check"}}{(default) Check for repeated values and adjust inference if needed.}
+\item{\code{"check"}}{Check for repeated values and adjust inference if needed (default).}
 \item{\code{"adjust"}}{Adjust bandwidths to guarantee a sufficient number of unique support points.}
 \item{\code{"off"}}{Ignore mass points completely.}
 }}
 
-\item{C}{Cluster ID variable used for cluster-robust variance estimation with degrees-of-freedom weights.Default is \code{C = NULL}.}
+\item{C}{Cluster ID variable used for cluster-robust variance estimation. Default is \code{C = NULL}.}
 
 \item{scaleregul}{Scaling factor for the regularization term in bandwidth selection. Default is \code{1}.}
 
@@ -93,7 +93,7 @@ Options:
 \value{
 An object of class \code{"rd2d.dist"}, a list containing:
 \describe{
-\item{\code{main}}{Data frame of point estimates, standard errors, confidence intervals, and bandwidths:
+\item{\code{results}}{A data frame with point estimates, variances, p-values, confidence intervals, confidence bands, and bandwidths at each evaluation point.
 \describe{
 \item{\code{b1}}{First coordinate of the evaluation point.}
 \item{\code{b2}}{Second coordinate of the evaluation point.}
@@ -112,18 +112,18 @@ An object of class \code{"rd2d.dist"}, a list containing:
 \item{\code{Nh1}}{Effective sample size for treatment group.}
 }
 }
-\item{\code{main.A0}}{Summary table for the control group only.}
-\item{\code{main.A1}}{Summary table for the treatment group only.}
+\item{\code{results.A0}}{Same structure as \code{results} but for control group outcomes.}
+\item{\code{results.A1}}{Same structure as \code{results} but for treatment group outcomes.}
 \item{\code{tau.hat}}{Vector of point estimates \eqn{\widehat{\tau}_p(\mathbf{b})}.}
 \item{\code{se.hat}}{Standard errors corresponding to \eqn{\widehat{\tau}_p(\mathbf{b})}.}
 \item{\code{cb}}{Confidence intervals and uniform bands.}
-\item{\code{cov.us}}{Covariance matrix used to construct uniform bands.}
-\item{\code{opt}}{A list of estimation options (e.g., \code{p}, \code{q}, \code{kernel}, \code{level}, etc.) and internal variables such as sample size \eqn{N}.}
+\item{\code{cov.q}}{Covariance matrix for bias-corrected estimates \eqn{\widehat{\tau}_{\text{dist},q}(\mathbf{b})} for all point evaluations \eqn{\mathbf{b}}.}
+\item{\code{opt}}{List of options used in the function call.}
 }
 }
 \description{
 \code{rd2d.dist} implements distance-based local polynomial boundary regression discontinuity (RD) point estimators with robust bias-corrected pointwise confidence intervals and
-uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025). For robust bias-correction, see Calonico, Cattaneo and Titiunik (2014).
+uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025a) with a companion software article Cattaneo, Titiunik and Yu (2025b). For robust bias-correction, see Calonico, Cattaneo, Titiunik (2014).
 
 Companion commands are: \code{rdbw2d.dist} for data-driven bandwidth selection.
 
@@ -170,8 +170,12 @@ summary(result)
 }
 \references{
 \itemize{
-\item{\href{https://mdcattaneo.github.io/papers/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025).}
+\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025a).}
 Estimation and Inference in Boundary Discontinuity Designs}
+\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_rd2d.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025b).}
+rd2d: Causal Inference in Boundary Discontinuity Designs}
+\item{\href{https://rdpackages.github.io/references/Calonico-Cattaneo-Titiunik_2014_ECMA.pdf}{Calonico, S., Cattaneo, M. D., Titiunik, R. (2014)}
+Robust Nonparametric Confidence Intervals for Regression-Discontinuity Designs}
 }
 }
 \seealso{

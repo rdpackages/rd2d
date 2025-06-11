@@ -3,11 +3,11 @@
 #' @title Bandwidth Selection for 2D Local Polynomial RD Design
 #'
 #' @description
-#' \code{rdbw2d} implements bandwidth selector for bivariate local polynomial boundary regression discontinuity (RD) point estimators with robust bias-corrected pointwise confidence intervals and 
-#' uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025). 
-#' 
+#' \code{rdbw2d} implements bandwidth selector for bivariate local polynomial boundary regression discontinuity (RD) point estimators with robust bias-corrected pointwise confidence intervals and
+#' uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025a) with a companion software article Cattaneo, Titiunik and Yu (2025b). For robust bias-correction, see Calonico, Cattaneo, Titiunik (2014).
+#'
 #' Companion commands are: \code{rd2d} for point estimation and inference procedures.
-#' 
+#'
 #' For other packages of RD designs, visit
 #' <https://rdpackages.github.io/>
 #'
@@ -19,12 +19,12 @@
 #' @param deriv The order of the derivatives of the regression functions to be estimated; a numeric vector of length 2 specifying the number of derivatives in each coordinate (e.g., \eqn{c(1,2)} corresponds to \eqn{\partial_1 \partial_2^2}).
 #' @param tangvec Tangent vectors; a matrix or data frame of dimension \eqn{J \times 2} specifying directional derivatives. Overrides \code{deriv} if provided.
 #' @param kernel Kernel function to use. Options are \code{"unif"}, \code{"uniform"} (uniform), \code{"triag"}, \code{"triangular"} (triangular, default), and \code{"epan"}, \code{"epanechnikov"} (Epanechnikov).
-#' @param kernel_type Kernel structure. Either \code{"prod"} for product kernels or \code{"rad"} for radial kernels.
-#' @param bwselect Bandwidth selection strategy. Options: 
+#' @param kernel_type Kernel structure. Either \code{"prod"} for product kernels (default) or \code{"rad"} for radial kernels.
+#' @param bwselect Bandwidth selection strategy. Options:
 #' \itemize{
-#' \item \code{"mserd"}. One common MSE-optimal bandwidth selector for the boundary RD treatment effect estimator for each evaluation point (default). 
+#' \item \code{"mserd"}. One common MSE-optimal bandwidth selector for the boundary RD treatment effect estimator for each evaluation point (default).
 #' \item \code{"imserd"}. IMSE-optimal bandwidth selector for the boundary RD treatment effect estimator based on all evaluation points.
-#' \item \code{"msetwo"}. Two different MSE-optimal bandwidth selectors (control and treatment) for the boundary RD treatment effect estimator for each evaluation point. 
+#' \item \code{"msetwo"}. Two different MSE-optimal bandwidth selectors (control and treatment) for the boundary RD treatment effect estimator for each evaluation point.
 #' \item \code{"imsetwo"}. Two IMSE-optimal bandwidth selectors (control and treatment) for the boundary RD treatment effect estimator based on all evaluation points.
 #' \item \code{"user provided"}. User-provided bandwidths. If \code{h} is not \code{NULL}, then \code{bwselect} is overwritten to \code{"user provided"}.
 #' }
@@ -36,18 +36,17 @@
 #' \item \code{"hc2"}: heteroskedasticity-robust plug-in residual variance estimator with HC2 adjustment.
 #' \item \code{"hc3"}: heteroskedasticity-robust plug-in residual variance estimator with HC3 adjustment.
 #' }
-#' Default is \code{"hc1"}.
-#' @param bwcheck If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} unique observations are used. Default is \code{50 + p + 1}.
+#' @param bwcheck If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} observations are used. If \code{masspoints == "adjust"}, ensure at least \code{bwcheck} unique observations are used. The program stops with “not enough observations” if sample size \eqn{N} < \code{bwcheck}. Default is \code{50 + p + 1}.
 #' @param masspoints Handling of mass points in the running variable. Options are:
 #' \itemize{
 #' \item \code{"check"}: detects presence of mass points and reports the number of unique observations (default).
 #' \item \code{"adjust"}: adjusts preliminary bandwidths to ensure a minimum number of unique observations within each side of the cutoff.
 #' \item \code{"off"}: ignores presence of mass points.
 #' }
-#' @param C Cluster ID variable used for cluster-robust variance estimation with degrees-of-freedom weights.Default is \code{C = NULL}.
+#' @param C Cluster ID variable used for cluster-robust variance estimation. Default is \code{C = NULL}.
 #' @param scaleregul Scaling factor for the regularization term in bandwidth selection. Default is 3.
 #' @param scalebiascrct Scaling factor used for bias correction based on higher order expansions. Default is 1.
-#' @param stdvars Logical. If TRUE, the running variables \eqn{X_{1i}} and \eqn{X_{2i}} are standardized before computing the bandwidths. Default is \code{FALSE}. Standardization only affects automatic bandwidth selection if bandwidths are not manually provided via \code{h}.
+#' @param stdvars Logical. If TRUE, the running variables \eqn{X_{1i}} and \eqn{X_{2i}} are standardized before computing the bandwidths. Default is \code{TRUE}. Standardization only affects automatic bandwidth selection if bandwidths are not manually provided via \code{h}.
 #'
 #' @return A list of class \code{"rdbw2d"} containing:
 #' \describe{
@@ -91,7 +90,7 @@
 #'   }
 #' }
 #' @seealso \code{\link{rd2d}}, \code{\link{print.rdbw2d}}, \code{\link{summary.rdbw2d}}
-#' 
+#'
 #' @author
 #' Matias D. Cattaneo, Princeton University. \email{cattaneo@princeton.edu} \cr
 #' Rocío Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
@@ -99,10 +98,14 @@
 #'
 #' @references
 #' \itemize{
-#' \item{\href{https://mdcattaneo.github.io/papers/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025).}
+#' \item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025a).}
 #' Estimation and Inference in Boundary Discontinuity Designs}
+#' \item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_rd2d.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025b).}
+#' rd2d: Causal Inference in Boundary Discontinuity Designs}
+#' \item{\href{https://rdpackages.github.io/references/Calonico-Cattaneo-Titiunik_2014_ECMA.pdf}{Calonico, S., Cattaneo, M. D., Titiunik, R. (2014)}
+#' Robust Nonparametric Confidence Intervals for Regression-Discontinuity Designs}
 #' }
-#' 
+#'
 #' @examples
 #' # Simulated example
 #' set.seed(123)
@@ -127,9 +130,9 @@ rdbw2d <- function(Y, X, t, b, p = 1, deriv = c(0,0), tangvec = NULL,
                    kernel_type = c("prod","rad"),
                    bwselect = c("mserd", "imserd", "msetwo", "imsetwo"),
                    method = c("dpi", "rot"), vce = c("hc1","hc0","hc2","hc3"),
-                   bwcheck = 20, masspoints = c("check","adjust","off"),
+                   bwcheck = 50 + p + 1, masspoints = c("check","adjust","off"),
                    C = NULL, scaleregul = 1, scalebiascrct = 1,
-                   stdvars = FALSE){
+                   stdvars = TRUE){
 
   # Input error handling
 
@@ -142,7 +145,7 @@ rdbw2d <- function(Y, X, t, b, p = 1, deriv = c(0,0), tangvec = NULL,
   verbose <- FALSE
 
   d <- t # renaming the variable
-  
+
   # Check Errors
 
   exit=0
@@ -203,6 +206,14 @@ rdbw2d <- function(Y, X, t, b, p = 1, deriv = c(0,0), tangvec = NULL,
   N <- dim(dat)[1]
   N.0 <- dim(dat[dat$d == 0,])[1]
   N.1 <- dim(dat[dat$d == 1,])[1]
+
+  min_sample_size <- bwcheck
+  if (is.null(bwcheck)) min_sample_size <- 50 + p + 1
+
+  if (N < min_sample_size){
+    warning("Not enough observations to perform bandwidth calculations.")
+    stop()
+  }
 
   if (is.null(p))         p <- 1
   kernel   <- tolower(kernel)
@@ -265,13 +276,6 @@ rdbw2d <- function(Y, X, t, b, p = 1, deriv = c(0,0), tangvec = NULL,
       if (is.null(bwcheck) & (masspoints == "check" | masspoints == "adjust")) bwcheck <- 50 + p + 1
     }
   }
-  # if (!is.null(C)){
-  #   unique.0 <- unique(C[d == FALSE])
-  #   unique.1 <- unique(C[d == TRUE])
-  #   M.0 <- length(unique.0)
-  #   M.1 <- length(unique.1)
-  #   M <- M.0 + M.1
-  # }
 
   # Rule of thumb bandwidth selection
 
@@ -292,13 +296,17 @@ rdbw2d <- function(Y, X, t, b, p = 1, deriv = c(0,0), tangvec = NULL,
     dat.centered <- dat[,c("x.1", "x.2", "y", "d")]
     dat.centered$x.1 <- dat.centered$x.1 - ev$x.1
     dat.centered$x.2 <- dat.centered$x.2 - ev$x.2
-    dat.centered$dist <- sqrt(dat.centered$x.1^2 + dat.centered$x.2^2)
+
+    dat.centered$dist <- pmax(abs(dat.centered$x.1), abs(dat.centered$x.2)) # infinity norm
+    if (kernel_type == "rad") dat.centered$dist <- sqrt(dat.centered$x.1^2 + dat.centered$x.2^2) # Euclidean norm
 
     if (masspoints == "adjust"){
       unique.centered <- unique
       unique.centered$x.1 <- unique.centered$x.1 - ev$x.1
       unique.centered$x.2 <- unique.centered$x.2 - ev$x.2
-      unique.centered$dist <- sqrt(unique.centered$x.1^2 + unique.centered$x.2^2)
+
+      unique.centered$dist <- pmax(abs(unique.centered$x.1), abs(unique.centered$x.2)) # infinity norm
+      if (kernel_type == "rad") unique.centered$dist <- sqrt(unique.centered$x.1^2 + unique.centered$x.2^2) # Euclidean norm
     }
 
     # Weights
@@ -309,22 +317,22 @@ rdbw2d <- function(Y, X, t, b, p = 1, deriv = c(0,0), tangvec = NULL,
       if (masspoints == "adjust"){
         sorted.0 <- sort(unique.centered[unique.centered$d == FALSE,]$dist)
         sorted.1 <- sort(unique.centered[unique.centered$d == TRUE,]$dist)
-        bw.min.0   <- sorted.0[bwcheck]
-        bw.min.1   <- sorted.1[bwcheck]
+        bw.min.0   <- sorted.0[min(bwcheck, M.0)]
+        bw.min.1   <- sorted.1[min(bwcheck, M.1)]
         bw.max.0   <- sorted.0[length(sorted.0)]
         bw.max.1   <- sorted.1[length(sorted.1)]
       } else{
         sorted.0   <- sort(dat.centered[dat.centered$d == FALSE,]$dist)
         sorted.1   <- sort(dat.centered[dat.centered$d == TRUE,]$dist)
-        bw.min.0   <- sorted.0[bwcheck]
-        bw.min.1   <- sorted.1[bwcheck]
+        bw.min.0   <- sorted.0[min(bwcheck, N.0)]
+        bw.min.1   <- sorted.1[min(bwcheck, N.1)]
         bw.max.0   <- sorted.0[length(sorted.0)]
         bw.max.1   <- sorted.1[length(sorted.1)]
       }
-      dn.0     <- max(dn, bw.min.0)
-      dn.1     <- max(dn, bw.min.1)
-      dn.0     <- min(dn, bw.max.0)
-      dn.1     <- min(dn, bw.max.1)
+      dn.0     <- max(dn.0, bw.min.0)
+      dn.1     <- max(dn.1, bw.min.1)
+      dn.0     <- min(dn.0, bw.max.0)
+      dn.1     <- min(dn.1, bw.max.1)
     }
 
     if (kernel_type == "prod"){
@@ -332,8 +340,7 @@ rdbw2d <- function(Y, X, t, b, p = 1, deriv = c(0,0), tangvec = NULL,
              W.fun(dat.centered[dat.centered$d == FALSE,]$x.2/dn.0, kernel) / c(dn.0^2)
       w.1 <- W.fun(dat.centered[dat.centered$d == TRUE,]$x.1/dn.1, kernel) *
              W.fun(dat.centered[dat.centered$d == TRUE,]$x.2/dn.1, kernel) / c(dn.1^2)
-    }
-    else{
+    } else{
       w.0   <- W.fun(dat.centered[dat.centered$d == FALSE,]$dist/dn.0, kernel)/c(dn.0^2)
       w.1   <- W.fun(dat.centered[dat.centered$d == TRUE,]$dist/dn.1, kernel)/c(dn.1^2)
     }
@@ -341,8 +348,8 @@ rdbw2d <- function(Y, X, t, b, p = 1, deriv = c(0,0), tangvec = NULL,
     eN.0 <- sum(w.0 > 0)
     eN.1 <- sum(w.1 > 0)
 
-    vec.q.0 <- get_coeff(dat.centered[dat.centered$d == FALSE,], vec, p, dn, kernel, kernel_type)
-    vec.q.1 <- get_coeff(dat.centered[dat.centered$d == TRUE,], vec, p, dn, kernel, kernel_type)
+    vec.q.0 <- get_coeff(dat.centered[dat.centered$d == FALSE,], vec, p, dn.0, kernel, kernel_type)
+    vec.q.1 <- get_coeff(dat.centered[dat.centered$d == TRUE,], vec, p, dn.1, kernel, kernel_type)
 
     if (verbose) {print("Coefficients for a linear combination of (p+1)-th derivatives"); print(vec.q.0); print(vec.q.1)}
 
@@ -456,12 +463,12 @@ rdbw2d <- function(Y, X, t, b, p = 1, deriv = c(0,0), tangvec = NULL,
 
   out        <- list(bws = bws, mseconsts = results,
                      opt = list(N=N, N.0 = N.0, N.1 = N.1,M.0 = M.0,
-                                           M.1 = M.1, neval=neval, p=p, deriv=deriv, tangvec = tangvec,
-                                           kernel=kernel.type, kernel_type = kernel_type,
-                                           bwselect=bwselect, method = method, bwcheck = bwcheck,
-                                           stdvars = stdvars, C= C, clustered = clustered,
-                                           vce = vce, masspoints = masspoints,
-                                           scaleregul = scaleregul, scalebiascrct = scalebiascrct))
+                     M.1 = M.1, neval=neval, p=p, deriv=deriv, tangvec = tangvec,
+                     kernel=kernel.type, kernel_type = kernel_type,
+                     bwselect=bwselect, method = method, bwcheck = bwcheck,
+                     stdvars = stdvars, C= C, clustered = clustered,
+                     vce = vce, masspoints = masspoints,
+                     scaleregul = scaleregul, scalebiascrct = scalebiascrct))
   out$call   <- match.call()
   class(out) <- "rdbw2d"
   return(out)
@@ -519,9 +526,9 @@ print.rdbw2d <- function(x,...){
 ##' @param ... Optional arguments. Supported options include:
 #'   \itemize{
 #'     \item \code{subset}: Integer vector of indices of evaluation points to display. Defaults to all evaluation points.
-#'     \item \code{sep}: Integer. Controls spacing in the output. Default is \code{8}.
+#'     \item \code{sep}: Integer vector of controlling the column widths of the output table. Default is \code{c(4, rep(8, 6))}.
 #'   }
-#'   
+#'
 #' @return No return value. Called for its side effects of printing a formatted summary of \code{\link{rdbw2d}} results.
 #'
 #' @author
@@ -538,17 +545,17 @@ print.rdbw2d <- function(x,...){
 summary.rdbw2d <- function(object, ...) {
 
   x <- object
-  
+
   args <- list(...)
-  
+
   if (is.null(args[['subset']])) {
     subset <- NULL
   } else {
     subset <- args[['subset']]
   }
-  
+
   if (is.null(args[['sep']])) {
-    sep <- 8
+    sep <- c(4, rep(8, 6))
   } else {
     sep <- args[['sep']]
   }
@@ -576,13 +583,14 @@ summary.rdbw2d <- function(object, ...) {
   cat("Bandwidth Selection","\n")
 
   headers <- c("ID", "b1", "b2", "h01", "h02", "h11", "h12")
-  col_widths <- c(4, sep, sep, sep, sep, sep, sep)
+  # col_widths <- c(4, sep, sep, sep, sep, sep, sep)
+  col_widths <- sep
 
   cat(strrep("=", sum(col_widths)), "\n")
   group_headers <- c(
-    formatC("        Bdy Points", width = col_widths[1] + col_widths[2] + col_widths[3], format = "s", flag = "-"),
-    formatC("      BW Control", width = col_widths[4] + col_widths[5], format = "s", flag = "-"),
-    formatC("    BW Treatment", width = col_widths[6] + col_widths[7], format = "s", flag = "-")
+    formatC(str_pad("Bdy Points", width = 2 + col_widths[2] + col_widths[3], side = "both"), width = col_widths[1] + col_widths[2] + col_widths[3], format = "s"),
+    formatC(str_pad("BW Control", width = 3 + col_widths[5], side = "both"), width = col_widths[4] + col_widths[5], format = "s"),
+    formatC(str_pad("BW Treatment", width = 3 + col_widths[7], side = "both"), width = col_widths[6] + col_widths[7], format = "s")
   )
   cat(paste(group_headers, collapse = ""), "\n")
 

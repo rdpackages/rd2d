@@ -1,21 +1,21 @@
 # This file is for bandwidth selection for local polynomial estimator based on 2d location data.
 #' @title Bandwidth Selection for Distance-Based RD Designs
 #' @description
-#' \code{rdbw2d.dist} implements bandwidth selector for distance-based local polynomial boundary regression discontinuity (RD) point estimators with robust bias-corrected pointwise confidence intervals and 
-#' uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025). For robust bias-correction, see Calonico, Cattaneo and Titiunik (2014).
+#' \code{rdbw2d.dist} implements bandwidth selector for distance-based local polynomial boundary regression discontinuity (RD) point estimators with robust bias-corrected pointwise confidence intervals and
+#' uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025a) with a companion software article Cattaneo, Titiunik and Yu (2025b). For robust bias-correction, see Calonico, Cattaneo, Titiunik (2014).
 #'
 #' @param Y Dependent variable; a numeric vector of length \eqn{N}, where \eqn{N} is the sample size.
-#' @param D Distance-based scores \eqn{\mathbf{D}_i=(\mathbf{D}_{i}(\mathbf{b}_1),\cdots,\mathbf{D}_{i}(\mathbf{b}_J))}; dimension is \eqn{N \times J} where \eqn{N} = sample size and \eqn{J} = number of cutoffs; 
+#' @param D Distance-based scores \eqn{\mathbf{D}_i=(\mathbf{D}_{i}(\mathbf{b}_1),\cdots,\mathbf{D}_{i}(\mathbf{b}_J))}; dimension is \eqn{N \times J} where \eqn{N} = sample size and \eqn{J} = number of cutoffs;
 #' non-negative values means data point in treatment group and negative values means data point in control group.
 #' @param b Optional evaluation points; a matrix or data frame specifying boundary points \eqn{\mathbf{b}_j = (b_{1j}, b_{2j})}, dimension \eqn{J \times 2}.
 #' @param p Polynomial order for point estimation. Default is \code{p = 1}.
 #' @param kink Logical; whether to apply kink adjustment. Options: \code{"on"} (default) or \code{"off"}.
 #' @param kernel Kernel function to use. Options are \code{"unif"}, \code{"uniform"} (uniform), \code{"triag"}, \code{"triangular"} (triangular, default), and \code{"epan"}, \code{"epanechnikov"} (Epanechnikov).
-#' @param bwselect Bandwidth selection strategy. Options: 
+#' @param bwselect Bandwidth selection strategy. Options:
 #' \itemize{
-#' \item \code{"mserd"}. One common MSE-optimal bandwidth selector for the boundary RD treatment effect estimator for each evaluation point (default). 
+#' \item \code{"mserd"}. One common MSE-optimal bandwidth selector for the boundary RD treatment effect estimator for each evaluation point (default).
 #' \item \code{"imserd"}. IMSE-optimal bandwidth selector for the boundary RD treatment effect estimator based on all evaluation points.
-#' \item \code{"msetwo"}. Two different MSE-optimal bandwidth selectors (control and treatment) for the boundary RD treatment effect estimator for each evaluation point. 
+#' \item \code{"msetwo"}. Two different MSE-optimal bandwidth selectors (control and treatment) for the boundary RD treatment effect estimator for each evaluation point.
 #' \item \code{"imsetwo"}. Two IMSE-optimal bandwidth selectors (control and treatment) for the boundary RD treatment effect estimator based on all evaluation points.
 #' \item \code{"user provided"}. User-provided bandwidths. If \code{h} is not \code{NULL}, then \code{bwselect} is overwritten to \code{"user provided"}.
 #' }
@@ -23,15 +23,15 @@
 #' Options:
 #' \describe{
 #'   \item{\code{"hc0"}}{Heteroskedasticity-robust variance estimator without small sample adjustment (White robust).}
-#'   \item{\code{"hc1"}}{Heteroskedasticity-robust variance estimator with degrees-of-freedom correction. (default)}
+#'   \item{\code{"hc1"}}{Heteroskedasticity-robust variance estimator with degrees-of-freedom correction (default).}
 #'   \item{\code{"hc2"}}{Heteroskedasticity-robust variance estimator using leverage adjustments.}
 #'   \item{\code{"hc3"}}{More conservative heteroskedasticity-robust variance estimator (similar to jackknife correction).}
 #' }
-#' @param bwcheck If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} unique observations are used. Default is \code{50 + p + 1}.
+#' @param bwcheck If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} observations are used. The program stops with “not enough observations” if sample size \eqn{N} < \code{bwcheck}. Default is \code{50 + p + 1}.
 #' @param masspoints Strategy for handling mass points in the running variable.
 #' Options:
 #' \describe{
-#'   \item{\code{"check"}}{(default) Check for repeated values and adjust inference if needed.}
+#'   \item{\code{"check"}}{Check for repeated values and adjust inference if needed (default).}
 #'   \item{\code{"adjust"}}{Adjust bandwidths to guarantee a sufficient number of unique support points.}
 #'   \item{\code{"off"}}{Ignore mass points completely.}
 #' }
@@ -52,11 +52,11 @@
 #'     }
 #'   }
 #'   \item{\code{mseconsts}}{Data frame of intermediate bias and variance constants used for MSE/IMSE calculations.}
-#'   \item{\code{opt}}{A list of options and settings used in estimation, including \code{p}, \code{kernel}, sample size \eqn{N}, and user-specified choices.}
+#'   \item{\code{opt}}{List of options used in the function call.}
 #' }
 #'
 #' @seealso \code{\link{rd2d.dist}}, \code{\link{rd2d}}, \code{\link{summary.rdbw2d.dist}}, \code{\link{print.rdbw2d.dist}}
-#' 
+#'
 #' @author
 #' Matias D. Cattaneo, Princeton University. \email{cattaneo@princeton.edu} \cr
 #' Rocío Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
@@ -64,10 +64,14 @@
 #'
 #' @references
 #' \itemize{
-#' \item{\href{https://mdcattaneo.github.io/papers/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025).}
+#' \item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025a).}
 #' Estimation and Inference in Boundary Discontinuity Designs}
+#' \item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_rd2d.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025b).}
+#' rd2d: Causal Inference in Boundary Discontinuity Designs}
+#' \item{\href{https://rdpackages.github.io/references/Calonico-Cattaneo-Titiunik_2014_ECMA.pdf}{Calonico, S., Cattaneo, M. D., Titiunik, R. (2014)}
+#' Robust Nonparametric Confidence Intervals for Regression-Discontinuity Designs}
 #' }
-#' 
+#'
 #' @examples
 #' set.seed(123)
 #' n <- 5000
@@ -176,6 +180,14 @@ rdbw2d.dist <- function(Y, D, b = NULL, p = 1, kink = c("off", "on"),
 
   if (is.null(p))         p <- 1
   kernel   <- tolower(kernel)
+
+  min_sample_size <- bwcheck
+  if (is.null(bwcheck)) min_sample_size <- 50 + p + 1
+
+  if (N < min_sample_size){
+    warning("Not enough observations to perform bandwidth calculations.")
+    stop()
+  }
 
   e_deriv <- matrix(0, nrow = neval, ncol = p+1)
   e_deriv[,1] <- 1
@@ -367,10 +379,8 @@ print.rdbw2d.dist <- function(x,...){
 #' @param ... Optional arguments. Supported options include:
 #'   \itemize{
 #'     \item \code{subset}: Integer vector of indices of evaluation points to display. Defaults to all evaluation points.
-#'     \item \code{sep}: Integer vector of length two. Controls spacing in the output.
-#'       \code{sep[1]} controls spacing for the columns of evaluation points in the table.
-#'       \code{sep[2]} controls spacing for the columns of bandwidths in the table.
-#'       Default is \code{c(8, 14)}.
+#'     \item \code{sep}: Integer vector of length five controlling the column widths of the output table. Default is \code{c(4, 8, 8, 14, 14)}.
+#'      When \code{b} is not provided, output table has three columns, the second and third entry of \code{sep} are not used, and can be any place holder.
 #'   }
 #'
 #' @return No return value. This function is called for its side effects: it prints a formatted summary of \code{\link{rdbw2d.dist}} results.
@@ -389,9 +399,9 @@ print.rdbw2d.dist <- function(x,...){
 summary.rdbw2d.dist <- function(object,...) {
 
   x <- object
-  
+
   args <- list(...)
-  
+
   if (is.null(args[['subset']])) {
     subset <- NULL
   } else {
@@ -399,7 +409,7 @@ summary.rdbw2d.dist <- function(object,...) {
   }
 
   if (is.null(args[['sep']])) {
-    sep <- c(8, 14)
+    sep <- c(4, 8, 8, 14, 14)
   } else {
     sep <- args[['sep']]
   }
@@ -427,20 +437,20 @@ summary.rdbw2d.dist <- function(object,...) {
 
   if (eval.specified){
     headers <- c("ID", "b1", "b2", "h0", "h1")
-    col_widths <- c(4, sep[1], sep[1], sep[2], sep[2])
+    col_widths <- sep
   } else {
     headers <- c("ID", "h0", "h1")
-    col_widths <- c(4, sep[2], sep[2])
+    col_widths <- sep[c(1, 4, 5)]
   }
 
-  col_widths_default <- c(4, sep[1], sep[1], sep[2], sep[2])
+  col_widths_default <- sep
 
   cat(strrep("=", sum(col_widths)), "\n")
 
   # Format headers using formatC for right alignment
   if (eval.specified){
     group_headers <- c(
-      formatC("        Bdy Points", width = col_widths[1] + col_widths[2] + col_widths[3], format = "s", flag = "-"),
+      formatC(str_pad("Bdy Points", width = 2 + col_widths[2] + col_widths[3], side = "both"), width = col_widths[1] + col_widths[2] + col_widths[3], format = "s"),
       formatC("BW Control", width = col_widths_default[4], format = "s"),
       formatC("BW Treatment", width = col_widths_default[5], format = "s")
     )

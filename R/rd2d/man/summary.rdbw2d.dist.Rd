@@ -12,10 +12,8 @@
 \item{...}{Optional arguments. Supported options include:
 \itemize{
 \item \code{subset}: Integer vector of indices of evaluation points to display. Defaults to all evaluation points.
-\item \code{sep}: Integer vector of length two. Controls spacing in the output.
-\code{sep[1]} controls spacing for the columns of evaluation points in the table.
-\code{sep[2]} controls spacing for the columns of bandwidths in the table.
-Default is \code{c(8, 14)}.
+\item \code{sep}: Integer vector of length five controlling the column widths of the output table. Default is \code{c(4, 8, 8, 14, 14)}.
+When \code{b} is not provided, output table has three columns, the second and third entry of \code{sep} are not used, and can be any place holder.
 }}
 }
 \value{

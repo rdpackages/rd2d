@@ -18,12 +18,12 @@ rdbw2d(
   bwselect = c("mserd", "imserd", "msetwo", "imsetwo"),
   method = c("dpi", "rot"),
   vce = c("hc1", "hc0", "hc2", "hc3"),
-  bwcheck = 20,
+  bwcheck = 50 + p + 1,
   masspoints = c("check", "adjust", "off"),
   C = NULL,
   scaleregul = 1,
   scalebiascrct = 1,
-  stdvars = FALSE
+  stdvars = TRUE
 )
 }
 \arguments{
@@ -43,7 +43,7 @@ rdbw2d(
 
 \item{kernel}{Kernel function to use. Options are \code{"unif"}, \code{"uniform"} (uniform), \code{"triag"}, \code{"triangular"} (triangular, default), and \code{"epan"}, \code{"epanechnikov"} (Epanechnikov).}
 
-\item{kernel_type}{Kernel structure. Either \code{"prod"} for product kernels or \code{"rad"} for radial kernels.}
+\item{kernel_type}{Kernel structure. Either \code{"prod"} for product kernels (default) or \code{"rad"} for radial kernels.}
 
 \item{bwselect}{Bandwidth selection strategy. Options:
 \itemize{
@@ -62,10 +62,9 @@ rdbw2d(
 \item \code{"hc1"}: heteroskedasticity-robust plug-in residual variance estimator with HC1 small-sample adjustment (default).
 \item \code{"hc2"}: heteroskedasticity-robust plug-in residual variance estimator with HC2 adjustment.
 \item \code{"hc3"}: heteroskedasticity-robust plug-in residual variance estimator with HC3 adjustment.
-}
-Default is \code{"hc1"}.}
+}}
 
-\item{bwcheck}{If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} unique observations are used. Default is \code{50 + p + 1}.}
+\item{bwcheck}{If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} observations are used. If \code{masspoints == "adjust"}, ensure at least \code{bwcheck} unique observations are used. The program stops with “not enough observations” if sample size \eqn{N} < \code{bwcheck}. Default is \code{50 + p + 1}.}
 
 \item{masspoints}{Handling of mass points in the running variable. Options are:
 \itemize{
@@ -74,13 +73,13 @@ Default is \code{"hc1"}.}
 \item \code{"off"}: ignores presence of mass points.
 }}
 
-\item{C}{Cluster ID variable used for cluster-robust variance estimation with degrees-of-freedom weights.Default is \code{C = NULL}.}
+\item{C}{Cluster ID variable used for cluster-robust variance estimation. Default is \code{C = NULL}.}
 
 \item{scaleregul}{Scaling factor for the regularization term in bandwidth selection. Default is 3.}
 
 \item{scalebiascrct}{Scaling factor used for bias correction based on higher order expansions. Default is 1.}
 
-\item{stdvars}{Logical. If TRUE, the running variables \eqn{X_{1i}} and \eqn{X_{2i}} are standardized before computing the bandwidths. Default is \code{FALSE}. Standardization only affects automatic bandwidth selection if bandwidths are not manually provided via \code{h}.}
+\item{stdvars}{Logical. If TRUE, the running variables \eqn{X_{1i}} and \eqn{X_{2i}} are standardized before computing the bandwidths. Default is \code{TRUE}. Standardization only affects automatic bandwidth selection if bandwidths are not manually provided via \code{h}.}
 }
 \value{
 A list of class \code{"rdbw2d"} containing:
@@ -127,7 +126,7 @@ A list of class \code{"rdbw2d"} containing:
 }
 \description{
 \code{rdbw2d} implements bandwidth selector for bivariate local polynomial boundary regression discontinuity (RD) point estimators with robust bias-corrected pointwise confidence intervals and
-uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025).
+uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025a) with a companion software article Cattaneo, Titiunik and Yu (2025b). For robust bias-correction, see Calonico, Cattaneo, Titiunik (2014).
 
 Companion commands are: \code{rd2d} for point estimation and inference procedures.
 
@@ -154,8 +153,12 @@ summary(bws)
 }
 \references{
 \itemize{
-\item{\href{https://mdcattaneo.github.io/papers/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025).}
+\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025a).}
 Estimation and Inference in Boundary Discontinuity Designs}
+\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_rd2d.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025b).}
+rd2d: Causal Inference in Boundary Discontinuity Designs}
+\item{\href{https://rdpackages.github.io/references/Calonico-Cattaneo-Titiunik_2014_ECMA.pdf}{Calonico, S., Cattaneo, M. D., Titiunik, R. (2014)}
+Robust Nonparametric Confidence Intervals for Regression-Discontinuity Designs}
 }
 }
 \seealso{

@@ -55,7 +55,7 @@ rd2d(
 
 \item{kernel}{Kernel function to use. Options are \code{"unif"}, \code{"uniform"} (uniform), \code{"triag"}, \code{"triangular"} (triangular, default), and \code{"epan"}, \code{"epanechnikov"} (Epanechnikov).}
 
-\item{kernel_type}{Kernel structure. Either \code{"prod"} for product kernels or \code{"rad"} for radial kernels.}
+\item{kernel_type}{Kernel structure. Either \code{"prod"} for product kernels (default) or \code{"rad"} for radial kernels.}
 
 \item{vce}{Variance-covariance estimation method. Options are:
 \itemize{
@@ -63,8 +63,7 @@ rd2d(
 \item \code{"hc1"}: heteroskedasticity-robust plug-in residual variance estimator with HC1 small-sample adjustment (default).
 \item \code{"hc2"}: heteroskedasticity-robust plug-in residual variance estimator with HC2 adjustment.
 \item \code{"hc3"}: heteroskedasticity-robust plug-in residual variance estimator with HC3 adjustment.
-}
-Default is \code{"hc1"}.}
+}}
 
 \item{masspoints}{Handling of mass points in the running variable. Options are:
 \itemize{
@@ -73,7 +72,7 @@ Default is \code{"hc1"}.}
 \item \code{"off"}: ignores presence of mass points.
 }}
 
-\item{C}{Cluster ID variable used for cluster-robust variance estimation with degrees-of-freedom weights.Default is \code{C = NULL}.}
+\item{C}{Cluster ID variable used for cluster-robust variance estimation. Default is \code{C = NULL}.}
 
 \item{level}{Nominal confidence level for intervals/bands, between 0 and 100 (default is 95).}
 
@@ -94,18 +93,18 @@ Default is \code{"hc1"}.}
 
 \item{method}{Bandwidth selection method for bias estimator based on local polynomials. Either \code{"dpi"} (default) for data-driven plug-in MSE optimal bandwidth selector or \code{"rot"} for rule-of-thumb bandwidth selector.}
 
-\item{bwcheck}{If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} unique observations are used. Default is \code{50 + p + 1}.}
+\item{bwcheck}{If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} observations are used. If \code{masspoints == "adjust"}, ensure at least \code{bwcheck} unique observations are used. The program stops with “not enough observations” if sample size \eqn{N} < \code{bwcheck}. Default is \code{50 + p + 1}.}
 
 \item{scaleregul}{Scaling factor for the regularization term in bandwidth selection. Default is 3.}
 
 \item{scalebiascrct}{Scaling factor used for bias correction based on higher order expansions. Default is 1.}
 
-\item{stdvars}{Logical. If TRUE, the running variables \eqn{X_{1i}} and \eqn{X_{2i}} are standardized before computing the bandwidths. Default is \code{FALSE}. Standardization only affects automatic bandwidth selection if bandwidths are not manually provided via \code{h}.}
+\item{stdvars}{Logical. If TRUE, the running variables \eqn{X_{1i}} and \eqn{X_{2i}} are standardized before computing the bandwidths. Default is \code{TRUE}. Standardization only affects automatic bandwidth selection if bandwidths are not manually provided via \code{h}.}
 }
 \value{
 An object of class \code{"rd2d"}, a list with components:
 \describe{
-\item{\code{main}}{A data frame with point estimates, variances, p-values, confidence intervals, confidence bands, and bandwidths at each evaluation point.
+\item{\code{results}}{A data frame with point estimates, variances, p-values, confidence intervals, confidence bands, bandwidths and effective sample size at each evaluation point.
 \describe{
 \item{\code{b1}, \code{b2}}{First and second coordinate of evaluation points \eqn{\mathbf{b} = (b_1,b_2)}.}
 \item{\code{Est.p}}{Point estimate \eqn{\widehat{\tau}_p(\mathbf{b})}.}
@@ -115,23 +114,21 @@ An object of class \code{"rd2d"}, a list with components:
 \item{\code{p-value}}{P-value based on t-statistic with bias-corrected estimate.}
 \item{\code{CI.lower}, \code{CI.upper}}{Pointwise confidence intervals.}
 \item{\code{CB.lower}, \code{CB.upper}}{Uniform confidence bands if computed.}
-\item{\code{h01}, \code{h02}, \code{h11}, \code{h12}}{Bandwidths used in each coordinate and group.}
+\item{\code{h01}, \code{h02}, \code{h11}, \code{h12}}{Bandwidths used in each coordinate and group. The four columns correspond to \eqn{h_{\text{control},1}},
+\eqn{h_{\text{control},2}}, \eqn{h_{\text{treated},1}}, \eqn{h_{\text{treated},2}} respectively.}
 \item{\code{Nh0}, \code{Nh1}}{Effective sample size on each side of the cutoff.}
 }
 }
-\item{\code{main.A0}}{Same structure as \code{main} but for control group outcomes.}
-\item{\code{main.A1}}{Same structure as \code{main} but for treated group outcomes.}
-\item{\code{tau.hat}}{Estimated treatment effect at each evaluation point.}
-\item{\code{se.hat}}{Standard errors corresponding to estimates.}
-\item{\code{cov.us}}{Covariance matrix used for uniform bands.}
-\item{\code{cb}}{List with critical values, pointwise, and uniform intervals.}
-\item{\code{pvalues}}{Two-sided p-values based on bias-corrected estimates.}
+\item{\code{results.A0}}{Same structure as \code{results} but for control group outcomes.}
+\item{\code{results.A1}}{Same structure as \code{results} but for treated group outcomes.}
+\item{\code{cov.q}}{Covariance matrix for bias-corrected estimates \eqn{\widehat{\tau}_q(\mathbf{b})} for all point evaluations \eqn{\mathbf{b}}.}
 \item{\code{opt}}{List of options used in the function call.}
+\item{\code{rdmodel}}{String label for the RD model.}
 }
 }
 \description{
 \code{rd2d} implements bivariate local polynomial boundary regression discontinuity (RD) point estimators with robust bias-corrected pointwise confidence intervals and
-uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025). For robust bias-correction, see Calonico, Cattaneo and Titiunik (2014).
+uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025a) with a companion software article Cattaneo, Titiunik and Yu (2025b). For robust bias-correction, see Calonico, Cattaneo, Titiunik (2014).
 
 Companion commands are: \code{rdbw2d} for data-driven bandwidth selection.
 
@@ -156,10 +153,12 @@ summary(result)
 }
 \references{
 \itemize{
-\item{\href{https://rdpackages.github.io/references/Calonico-Cattaneo-Titiunik_2014_ECMA.pdf}{Calonico, S., M. D. Cattaneo, and R. Titiunik. (2014).}
-Robust Nonparametric Confidence Intervals for Regression-Discontinuity Designs}
-\item{\href{https://mdcattaneo.github.io/papers/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025).}
+\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025a).}
 Estimation and Inference in Boundary Discontinuity Designs}
+\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_rd2d.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025b).}
+rd2d: Causal Inference in Boundary Discontinuity Designs}
+\item{\href{https://rdpackages.github.io/references/Calonico-Cattaneo-Titiunik_2014_ECMA.pdf}{Calonico, S., Cattaneo, M. D., Titiunik, R. (2014)}
+Robust Nonparametric Confidence Intervals for Regression-Discontinuity Designs}
 }
 }
 \seealso{
