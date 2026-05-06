@@ -4,18 +4,24 @@
 
 rm(list=ls(all=TRUE))
 
-install.packages('rd2d')
+required_packages <- c("rd2d", "ggplot2", "latex2exp", "dplyr")
+missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing_packages)) install.packages(missing_packages)
 
 library(rd2d)
 library(ggplot2)
 library(latex2exp)
 library(dplyr)
 
+data_dir <- if (dir.exists("Data")) "Data" else file.path("R", "Data")
+results_dir <- if (dir.exists("Results")) "Results" else file.path("R", "Results")
+dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
+
 ################################ Load data #####################################
 
-data_rd2d <- read.csv("Data/data_rd2d.csv")
-eval <- read.csv("Data/eval.csv")
-D <- as.matrix(read.table("Data/D.csv", sep = ",", header = FALSE))
+data_rd2d <- read.csv(file.path(data_dir, "data_rd2d.csv"))
+eval <- read.csv(file.path(data_dir, "eval.csv"))
+D <- as.matrix(read.table(file.path(data_dir, "D.csv"), sep = ",", header = FALSE))
 
 y <- data_rd2d$y
 X <- data_rd2d[,c("x.1", "x.2")]
@@ -89,19 +95,19 @@ plot_heat <- plot_heat + theme_minimal() +
 
 print(plot_heat)
 
-ggsave("Results/heat-treatment_effect.png", plot_heat, width = 6, height = 5)
+ggsave(file.path(results_dir, "heat-treatment_effect.png"), plot_heat, width = 6, height = 5)
 
 # heatmap for p-value
 
 data.plot$p.value <- result.rd2d$results$`P>|z|`
 data.plot$p.sig <- cut(data.plot$p.value,
                        breaks = c(0, 0.001, 0.01, 0.05, 0.1, 1),
-                       labels = c("p < 0.001", "0.001 ≤ p < 0.01", "0.01 ≤ p < 0.05", "0.05 ≤ p < 0.1", "p ≥ 0.1"))
+                       labels = c("p < 0.001", "0.001 <= p < 0.01", "0.01 <= p < 0.05", "0.05 <= p < 0.1", "p >= 0.1"))
 sig_colors <- c("p < 0.001" = "#d73027",       # red
-                "0.001 ≤ p < 0.01" = "#fc8d59", # orange
-                "0.01 ≤ p < 0.05" = "#fee08b",  # yellow
-                "0.05 ≤ p < 0.1" = "#d9ef8b",   # light green
-                "p ≥ 0.1" = "#91cf60")          # green
+                "0.001 <= p < 0.01" = "#fc8d59", # orange
+                "0.01 <= p < 0.05" = "#fee08b",  # yellow
+                "0.05 <= p < 0.1" = "#d9ef8b",   # light green
+                "p >= 0.1" = "#91cf60")          # green
 library(ggplot2)
 
 plot_heat_pvalue <- ggplot(data.plot, aes(x = x.1, y = x.2, fill = p.sig)) +
@@ -128,5 +134,4 @@ plot_heat_pvalue <- plot_heat_pvalue + geom_text(data=data.plot, aes(x=x.1, y=x.
 
 print(plot_heat_pvalue)
 
-ggsave("Results/heat-pvalue.png", plot_heat_pvalue, width = 6, height = 5)
-
+ggsave(file.path(results_dir, "heat-pvalue.png"), plot_heat_pvalue, width = 6, height = 5)

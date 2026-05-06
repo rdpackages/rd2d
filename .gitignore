@@ -1,0 +1,35 @@
+# R session files
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# R package build/check outputs
+*.Rcheck/
+*.tar.gz
+*.tgz
+
+# Generated manuals and local artifacts
+R/*.pdf
+
+# Local package manager/library state
+renv/library/
+renv/staging/
+.Rbuildignore.bak
+
+# Python development outputs for future python/ package
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp

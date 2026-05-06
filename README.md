@@ -1,5 +1,7 @@
 # RD2D
 
+[![R-CMD-check](https://github.com/rdpackages/rd2d/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/rdpackages/rd2d/actions/workflows/R-CMD-check.yaml)
+
 The `rd2d` package provides R implementations of pointwise and uniform estimation and inference for Boundary Discontinuity Designs employing local polynomial methods.
 
 This work was supported in part by the National Science Foundation through grants [SES-2019432](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2019432) and [SES-2241575](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2241575).
@@ -22,6 +24,18 @@ install.packages('rd2d')
 - Help: [R Manual](https://cran.r-project.org/web/packages/rd2d/rd2d.pdf), [CRAN repository](https://cran.r-project.org/package=rd2d).
 
 - Replication: [Data](R/Data/), [Illustration](R/rd2d_illustration.R), [Plot TE Curve](R/rd2d_plot_effects.R), [Plot Heat Maps](R/rd2d_plot_heatmaps.R).
+
+## Development
+
+The R package source lives in [`R/rd2d`](R/rd2d/). The remaining files in [`R`](R/) are illustration scripts, input data, and curated results.
+
+From the repository root, check the package with:
+
+```sh
+R CMD check --no-manual R/rd2d
+```
+
+GitHub Actions runs this check on Linux, macOS, and Windows for pull requests and pushes that touch the R package source.
 
 
 ## Repository

@@ -4,16 +4,23 @@
 
 rm(list=ls(all=TRUE))
 
-install.packages('rd2d')
+required_packages <- c("rd2d", "ggplot2", "latex2exp")
+missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing_packages)) install.packages(missing_packages)
+
 library(rd2d)
 library(ggplot2)
 library(latex2exp)
 
+data_dir <- if (dir.exists("Data")) "Data" else file.path("R", "Data")
+results_dir <- if (dir.exists("Results")) "Results" else file.path("R", "Results")
+dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
+
 ################################ Load data #####################################
 
-data_rd2d <- read.csv("Data/data_rd2d.csv")
-eval <- read.csv("Data/eval.csv")
-D <- as.matrix(read.table("Data/D.csv", sep = ",", header = FALSE))
+data_rd2d <- read.csv(file.path(data_dir, "data_rd2d.csv"))
+eval <- read.csv(file.path(data_dir, "eval.csv"))
+D <- as.matrix(read.table(file.path(data_dir, "D.csv"), sep = ",", header = FALSE))
 
 y <- data_rd2d$y
 X <- data_rd2d[,c("x.1", "x.2")]
@@ -116,4 +123,4 @@ temp_plot <- temp_plot + coord_cartesian(xlim = c(1, 40), ylim = c(0.45, 1.05))
 # Print the plot
 print(temp_plot)
 
-ggsave("Results/ci-and-cb.png", temp_plot, width = 6, height = 5)
+ggsave(file.path(results_dir, "ci-and-cb.png"), temp_plot, width = 6, height = 5)

@@ -1,5 +1,10 @@
 rm(list=ls(all=TRUE))
 
+if (!requireNamespace("proxy", quietly = TRUE)) install.packages("proxy")
+
+data_dir <- if (dir.exists("Data")) "Data" else file.path("R", "Data")
+dir.create(data_dir, recursive = TRUE, showWarnings = FALSE)
+
 ############################## Model parameters ################################
 
 a0 <- 3.350e-01
@@ -53,8 +58,7 @@ D <- D * t_expanded
 
 ############################## Save Data #######################################
 
-write.csv(data_rd2d, "Data/data_rd2d.csv", row.names = FALSE)
-write.csv(eval, "Data/eval.csv", row.names = FALSE)
-write.table(D, file = "Data/D.csv", sep = ",", row.names = FALSE, col.names = FALSE)
-
+write.csv(data_rd2d, file.path(data_dir, "data_rd2d.csv"), row.names = FALSE)
+write.csv(eval, file.path(data_dir, "eval.csv"), row.names = FALSE)
+write.table(D, file = file.path(data_dir, "D.csv"), sep = ",", row.names = FALSE, col.names = FALSE)
 
