@@ -41,7 +41,7 @@ rd2d.dist(
 
 \item{q}{Polynomial order for bias-corrected estimation. Must satisfy \eqn{q \geq p}. Default is \code{q = p + 1}.}
 
-\item{kink}{Logical; whether to apply kink adjustment. Options: \code{"on"} (default) or \code{"off"}.}
+\item{kink}{Logical; whether to apply kink adjustment. Options: \code{"on"} or \code{"off"} (default).}
 
 \item{kernel}{Kernel function to use. Options are \code{"unif"}, \code{"uniform"} (uniform), \code{"triag"}, \code{"triangular"} (triangular, default), and \code{"epan"}, \code{"epanechnikov"} (Epanechnikov).}
 
@@ -97,10 +97,10 @@ An object of class \code{"rd2d.dist"}, a list containing:
 \describe{
 \item{\code{b1}}{First coordinate of the evaluation point.}
 \item{\code{b2}}{Second coordinate of the evaluation point.}
-\item{\code{Est.p}}{Point estimate \eqn{\widehat{\tau}_{\text{dist},p}(\mathbf{b})} with polynomial order \eqn{p}.}
-\item{\code{Var.p}}{Variance of \eqn{\widehat{\tau}_{\text{dist},p}(\mathbf{b})}.}
+\item{\code{Est.p}}{Point estimate of \eqn{\widehat{\tau}_{\text{dist},p}(\mathbf{b})} with polynomial order \eqn{p}.}
+\item{\code{Se.p}}{Standard error of \eqn{\widehat{\tau}_{\text{dist},p}(\mathbf{b})}.}
 \item{\code{Est.q}}{Bias-corrected estimate \eqn{\widehat{\tau}_{\text{dist},q}(\mathbf{b})} with polynomial order \eqn{q}.}
-\item{\code{Var.q}}{Variance of \eqn{\widehat{\tau}_{\text{dist},q}(\mathbf{b})}.}
+\item{\code{Se.q}}{Standard error of \eqn{\widehat{\tau}_{\text{dist},q}(\mathbf{b})}.}
 \item{\code{pvalue}}{Two-sided p-value based on \eqn{T_{\text{dist},q}(\mathbf{b})}.}
 \item{\code{CI.lower}}{Lower bound of confidence interval.}
 \item{\code{CI.upper}}{Upper bound of confidence interval.}

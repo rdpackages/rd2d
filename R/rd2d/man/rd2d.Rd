@@ -107,10 +107,10 @@ An object of class \code{"rd2d"}, a list with components:
 \item{\code{results}}{A data frame with point estimates, variances, p-values, confidence intervals, confidence bands, bandwidths and effective sample size at each evaluation point.
 \describe{
 \item{\code{b1}, \code{b2}}{First and second coordinate of evaluation points \eqn{\mathbf{b} = (b_1,b_2)}.}
-\item{\code{Est.p}}{Point estimate \eqn{\widehat{\tau}_p(\mathbf{b})}.}
-\item{\code{Var.p}}{Variance of estimate \eqn{\widehat{\tau}_p(\mathbf{b})}.}
-\item{\code{Est.q}}{Bias-corrected point estimate \eqn{\widehat{\tau}_q(\mathbf{b})}.}
-\item{\code{Var.q}}{Variance of bias-corrected estimate \eqn{\widehat{\tau}_q(\mathbf{b})}.}
+\item{\code{Est.p}}{Point estimate of \eqn{\widehat{\tau}_p(\mathbf{b})}.}
+\item{\code{Se.p}}{Standard error of \eqn{\widehat{\tau}_p(\mathbf{b})}.}
+\item{\code{Est.q}}{Bias-corrected point estimate of \eqn{\widehat{\tau}_q(\mathbf{b})}.}
+\item{\code{Se.q}}{Standard error of bias-corrected estimate \eqn{\widehat{\tau}_q(\mathbf{b})}.}
 \item{\code{p-value}}{P-value based on t-statistic with bias-corrected estimate.}
 \item{\code{CI.lower}, \code{CI.upper}}{Pointwise confidence intervals.}
 \item{\code{CB.lower}, \code{CB.upper}}{Uniform confidence bands if computed.}

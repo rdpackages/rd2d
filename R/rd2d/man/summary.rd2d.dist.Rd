@@ -23,6 +23,9 @@ of \code{sep_main} are not used, and can be any place holder.
 \item \code{sep_bw}: Integer vector of length seven controlling the column widths of the output table when \code{output = "bw"}.
 Default is \code{c(4, rep(8,6))}. When \code{b} is not provided, output table has five columns, the second and third entry
 of \code{sep_bw} are not used, and can be any place holder.
+\item \code{WBATE}: Integer vector of weights for aggregated average treatment effect (WBATE). Should have non-negative entries
+summing up to one. If provided, an extra row for WBATE is added to the output table.
+\item \code{LTE}: Logical. If \code{TRUE}, an extra row for largest treatment effect (LTE) is added to the output table.
 }}
 }
 \value{

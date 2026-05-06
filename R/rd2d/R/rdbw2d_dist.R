@@ -9,7 +9,7 @@
 #' non-negative values means data point in treatment group and negative values means data point in control group.
 #' @param b Optional evaluation points; a matrix or data frame specifying boundary points \eqn{\mathbf{b}_j = (b_{1j}, b_{2j})}, dimension \eqn{J \times 2}.
 #' @param p Polynomial order for point estimation. Default is \code{p = 1}.
-#' @param kink Logical; whether to apply kink adjustment. Options: \code{"on"} (default) or \code{"off"}.
+#' @param kink Logical; whether to apply kink adjustment. Options: \code{"on"} or \code{"off"} (default).
 #' @param kernel Kernel function to use. Options are \code{"unif"}, \code{"uniform"} (uniform), \code{"triag"}, \code{"triangular"} (triangular, default), and \code{"epan"}, \code{"epanechnikov"} (Epanechnikov).
 #' @param bwselect Bandwidth selection strategy. Options:
 #' \itemize{

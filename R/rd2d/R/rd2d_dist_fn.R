@@ -390,8 +390,10 @@ rd2d_dist_fit <- function(Y, D, h, p, b, kernel, vce, bwcheck, masspoints, C, cb
     hbeta.0 <- inv.gamma0 %*% XtWY.0; hbeta.1 <- inv.gamma1 %*% XtWY.1
     mu0 <- hbeta.0[1];  mu1 <- hbeta.1[1]
     invH.0 <- get_invH_dist(h.0,p); invH.1 <- get_invH_dist(h.1,p)
-    res0 <- abs(eY.0 - as.matrix(R.0) %*% (invH.0 %*% hbeta.0))[,1]
-    res1 <- abs(eY.1 - as.matrix(R.1) %*% (invH.1 %*% hbeta.1))[,1]
+    # res0 <- abs(eY.0 - as.matrix(R.0) %*% (invH.0 %*% hbeta.0))[,1]
+    # res1 <- abs(eY.1 - as.matrix(R.1) %*% (invH.1 %*% hbeta.1))[,1]
+    res0 <- abs(eY.0 - as.matrix(R.0) %*% hbeta.0)[,1]
+    res1 <- abs(eY.1 - as.matrix(R.1) %*% hbeta.1)[,1]
 
     sqrtw_R.0 <- sqrt(eW.0) * as.matrix(R.0)
     sqrtw_R.1 <- sqrt(eW.1) * as.matrix(R.1)

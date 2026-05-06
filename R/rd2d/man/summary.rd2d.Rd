@@ -21,8 +21,9 @@ or \code{"bw"} to display bandwidth information. Default is \code{"main"}.
 Default is \code{c(4, 7, 7, 7, 7, 7, 17)}.
 \item \code{sep_bw}: Integer vector of controlling the column widths of the output table when \code{output = "bw"}.
 Default is \code{c(4, rep(8,8))}.
-\item \code{AATE}: Integer vector of weights for aggregated average treatment effect (AATE). Should have non-negative entries
-summing up to one. If provided, an extra row for AATE is added to the output table.
+\item \code{WBATE}: Integer vector of weights for aggregated average treatment effect (WBATE). Should have non-negative entries
+summing up to one. If provided, an extra row for WBATE is added to the output table.
+\item \code{LBATE}: Logical. If \code{TRUE}, an extra row for largest treatment effect (LBATE) is added to the output table.
 }}
 }
 \value{

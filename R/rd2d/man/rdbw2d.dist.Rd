@@ -31,7 +31,7 @@ non-negative values means data point in treatment group and negative values mean
 
 \item{p}{Polynomial order for point estimation. Default is \code{p = 1}.}
 
-\item{kink}{Logical; whether to apply kink adjustment. Options: \code{"on"} (default) or \code{"off"}.}
+\item{kink}{Logical; whether to apply kink adjustment. Options: \code{"on"} or \code{"off"} (default).}
 
 \item{kernel}{Kernel function to use. Options are \code{"unif"}, \code{"uniform"} (uniform), \code{"triag"}, \code{"triangular"} (triangular, default), and \code{"epan"}, \code{"epanechnikov"} (Epanechnikov).}
 

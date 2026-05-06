@@ -711,7 +711,7 @@ rd2d_cb <- function(mu.hat, cov.us, rep, side, alpha){
     CB.l <- mu.hat - cval * se.hat; CB.r <- rep(Inf, length(CB.l))
   }
 
-  return(list(CI.l = CI.l, CI.r = CI.r, CB.l = CB.l, CB.r = CB.r))
+  return(list(CI.l = CI.l, CI.r = CI.r, CB.l = CB.l, CB.r = CB.r, cval = cval))
 }
 
 ############################# Get Basis ########################################

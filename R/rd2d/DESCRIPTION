@@ -1,7 +1,7 @@
 Package: rd2d
 Type: Package
 Title: Boundary Regression Discontinuity Designs
-Version: 0.0.2
+Version: 0.0.3
 Authors@R: c(
     person(given = "Matias D.", family = "Cattaneo", role = "aut"),
     person(given = "Rocio", family = "Titiunik", role = "aut"),
@@ -14,11 +14,12 @@ Description: Provides estimation and inference procedures for boundary regressio
 Imports: MASS, expm, ggplot2, stringr
 License: GPL-2
 Encoding: UTF-8
-Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Maintainer: Ruiqi Rae Yu <rae.yu@princeton.edu>
 NeedsCompilation: no
-Packaged: 2025-06-10 19:42:19 UTC; yuruiqi
+Packaged: 2025-10-24 19:58:20 UTC; yuruiqi
 Author: Matias D. Cattaneo [aut],
   Rocio Titiunik [aut],
   Ruiqi Rae Yu [aut, cre]
+Repository: CRAN
+Date/Publication: 2025-10-24 20:20:02 UTC

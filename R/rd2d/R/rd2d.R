@@ -60,10 +60,10 @@
 #'   \item{\code{results}}{A data frame with point estimates, variances, p-values, confidence intervals, confidence bands, bandwidths and effective sample size at each evaluation point.
 #'     \describe{
 #'       \item{\code{b1}, \code{b2}}{First and second coordinate of evaluation points \eqn{\mathbf{b} = (b_1,b_2)}.}
-#'       \item{\code{Est.p}}{Point estimate \eqn{\widehat{\tau}_p(\mathbf{b})}.}
-#'       \item{\code{Var.p}}{Variance of estimate \eqn{\widehat{\tau}_p(\mathbf{b})}.}
-#'       \item{\code{Est.q}}{Bias-corrected point estimate \eqn{\widehat{\tau}_q(\mathbf{b})}.}
-#'       \item{\code{Var.q}}{Variance of bias-corrected estimate \eqn{\widehat{\tau}_q(\mathbf{b})}.}
+#'       \item{\code{Est.p}}{Point estimate of \eqn{\widehat{\tau}_p(\mathbf{b})}.}
+#'       \item{\code{Se.p}}{Standard error of \eqn{\widehat{\tau}_p(\mathbf{b})}.}
+#'       \item{\code{Est.q}}{Bias-corrected point estimate of \eqn{\widehat{\tau}_q(\mathbf{b})}.}
+#'       \item{\code{Se.q}}{Standard error of bias-corrected estimate \eqn{\widehat{\tau}_q(\mathbf{b})}.}
 #'       \item{\code{p-value}}{P-value based on t-statistic with bias-corrected estimate.}
 #'       \item{\code{CI.lower}, \code{CI.upper}}{Pointwise confidence intervals.}
 #'       \item{\code{CB.lower}, \code{CB.upper}}{Uniform confidence bands if computed.}
@@ -359,11 +359,13 @@ rd2d <- function(Y, X, t, b, h = NULL, deriv = c(0,0), tangvec = NULL,
   cb.hat.q <- list(CI.l = CI.lower, CI.r = CI.upper, CB.l = rep(NA, length(CI.lower)), CB.r = rep(NA, length(CI.lower)))
   CB.lower <- NA
   CB.upper <- NA
+  cval <- NA
   if (cbands){
     cov.hat.q <- rdbw2d_cov(dat, eval, e_deriv.q, deriv, q, cbind(h.01.q, h.02.q), cbind(h.11.q, h.12.q), kernel, kernel_type, vce, C)
     cb.hat.q <- rd2d_cb(tau.hat.q, cov.hat.q, repp, side, level)
     CB.lower <- cb.hat.q$CB.l
     CB.upper <- cb.hat.q$CB.r
+    cval <- cb.hat.q$cval
   }
 
   clustered <- !is.null(C)
@@ -393,7 +395,7 @@ rd2d <- function(Y, X, t, b, h = NULL, deriv = c(0,0), tangvec = NULL,
                        N.1 = N.1, M = M, M.0 = M.0, M.1 = M.1, neval=neval, bwselect = bwselect, method = method,
                        vce = vce, bwcheck = bwcheck, masspoints = masspoints, C = C, clustered = clustered,
                        scaleregul = scaleregul, scalebiascrct = scalebiascrct, stdvars = stdvars,
-                       level = level, repp = repp, side = side,cbands = cbands,
+                       level = level, repp = repp, side = side,cbands = cbands,cval = cval,
                        h01 = hgrid[,1], h02 = hgrid[,2], h11 = hgrid.1[,1], h12 = hgrid.1[,2],
                        Nh0 = eN.0.p, Nh1 = eN.1.p), cov.q=cov.hat.q, rdmodel = rdmodel)
   out$call   <- match.call()
@@ -432,7 +434,7 @@ print.rd2d <- function(x,...) {
 
   # Format and print the vector as "(x, y)"
   cat(sprintf("Number of Obs.         %d\n", x$opt$N))
-  cat(sprintf("BW type.               %s\n", paste(paste(x$opt$bwselect, x$opt$method, sep = "-"), ifelse(x$opt$stdvar, "-std", ""),sep = "")))
+  cat(sprintf("BW type.               %s\n", paste(paste(x$opt$bwselect, x$opt$method, sep = "-"), ifelse(x$opt$stdvars, "-std", ""),sep = "")))
   cat(sprintf("Kernel                 %s\n", paste(tolower(x$opt$kernel), x$opt$kernel_type, sep = "-")))
   cat(sprintf("VCE method             %s\n", paste(x$opt$vce, ifelse(x$opt$clustered, "-clustered", ""),sep = "")))
   cat(sprintf("Masspoints             %s\n", x$opt$masspoints))
@@ -469,8 +471,9 @@ print.rd2d <- function(x,...) {
 #'       Default is \code{c(4, 7, 7, 7, 7, 7, 17)}.
 #'     \item \code{sep_bw}: Integer vector of controlling the column widths of the output table when \code{output = "bw"}.
 #'       Default is \code{c(4, rep(8,8))}.
-#'     \item \code{AATE}: Integer vector of weights for aggregated average treatment effect (AATE). Should have non-negative entries
-#'       summing up to one. If provided, an extra row for AATE is added to the output table.
+#'     \item \code{WBATE}: Integer vector of weights for aggregated average treatment effect (WBATE). Should have non-negative entries
+#'       summing up to one. If provided, an extra row for WBATE is added to the output table.
+#'     \item \code{LBATE}: Logical. If \code{TRUE}, an extra row for largest treatment effect (LBATE) is added to the output table.
 #'   }
 #'
 #' @return No return value. This function is called for its side effects: it prints a formatted summary of \code{\link{rd2d}} results.
@@ -495,7 +498,7 @@ summary.rd2d <- function(object, ...) {
   if (is.null(args[['CBuniform']])) {
     CBuniform <- FALSE
   } else {
-    CBuniform <- TRUE
+    CBuniform <- args[['CBuniform']]
   }
 
   if (is.null(args[['subset']])) {
@@ -511,7 +514,7 @@ summary.rd2d <- function(object, ...) {
   }
 
   if (is.null(args[['sep_main']])) {
-    sep_main <- c(4, 7, 7, 7, 7, 7, 17)
+    sep_main <- c(5, 7, 7, 7, 7, 7, 17)
   } else {
     sep_main <- args[['sep_main']]
   }
@@ -522,19 +525,31 @@ summary.rd2d <- function(object, ...) {
     sep_bw <- args[['sep_bw']]
   }
 
-  if (is.null(args[['AATE']])){
-    AATE <- NULL
+  if (is.null(args[['WBATE']])){
+    WBATE <- NULL
   } else {
-    AATE <- args[['AATE']]
-    AATE <- AATE / sum(AATE)
+    WBATE <- args[['WBATE']]
+    WBATE <- WBATE / sum(WBATE)
   }
-
+  
+  if (is.null(args[['LBATE']])){
+    LBATE <- FALSE
+  } else {
+    LBATE <- args[['LBATE']]
+  }
+  
+  # compatibility between 'LBATE' and 'cbands'
+  if (LBATE & !x$opt$cbands){
+    warning("Rerun rd2d with cbands = TRUE.")
+    stop()
+  }
+  
   cat(paste(x$rdmodel, "\n", sep = ""))
   cat(paste("\n", sep = ""))
 
   # Format and print the vector as "(x, y)"
   cat(sprintf("Number of Obs.         %d\n", x$opt$N))
-  cat(sprintf("BW type.               %s\n", paste(paste(x$opt$bwselect, x$opt$method, sep = "-"), ifelse(x$opt$stdvar, "-std", ""),sep = "")))
+  cat(sprintf("BW type.               %s\n", paste(paste(x$opt$bwselect, x$opt$method, sep = "-"), ifelse(x$opt$stdvars, "-std", ""),sep = "")))
   cat(sprintf("Kernel                 %s\n", paste(tolower(x$opt$kernel), x$opt$kernel_type, sep = "-")))
   cat(sprintf("VCE method             %s\n", paste(x$opt$vce, ifelse(x$opt$clustered, "-clustered", ""),sep = "")))
   cat(sprintf("Masspoints             %s\n", x$opt$masspoints))
@@ -567,27 +582,33 @@ summary.rd2d <- function(object, ...) {
     Nh1 = x$opt$Nh1
   )
 
-  if (!is.null(AATE)){
-    est_AATE <- sum(AATE * x$results$Est.p)
-    se_AATE <- sqrt(AATE %*% x$cov.q %*% AATE)[1,1]
-    zvalue_AATE <- sum(AATE * x$results$Est.q)/se_AATE
-    pvalue_AATE <- 2 * pnorm(abs(zvalue_AATE),lower.tail = FALSE)
+  if (!is.null(WBATE)){
+    est_WBATE <- sum(WBATE * x$results$Est.p)
+    se_WBATE <- sqrt(WBATE %*% x$cov.q %*% WBATE)[1,1]
+    zvalue_WBATE <- sum(WBATE * x$results$Est.q)/se_WBATE
+    pvalue_WBATE <- 2 * pnorm(abs(zvalue_WBATE),lower.tail = FALSE)
 
     if (x$opt$side == "two"){
       zval <- qnorm((x$opt$level + 100)/ 200)
-      CI.lower_AATE <- sum(AATE * x$results$Est.q) - zval * se_AATE
-      CI.upper_AATE <- sum(AATE * x$results$Est.q) + zval * se_AATE
+      CI.lower_WBATE <- sum(WBATE * x$results$Est.q) - zval * se_WBATE
+      CI.upper_WBATE <- sum(WBATE * x$results$Est.q) + zval * se_WBATE
     }
     if (x$opt$side == "left"){
       zval <- qnorm(x$opt$level / 100)
-      CI.upper_AATE <- x$results$Est.q + zval * se_AATE
-      CI.lower_AATE <- rep(-Inf, length(CI.upper_AATE))
+      CI.upper_WBATE <- sum(WBATE * x$results$Est.q) + zval * se_WBATE
+      CI.lower_WBATE <- rep(-Inf, length(CI.upper_WBATE))
     }
     if (x$opt$side == "right"){
       zval <- qnorm(x$opt$level / 100)
-      CI.lower_AATE <- x$results$Est.q - zval * se_AATE
-      CI.upper_AATE <- rep(Inf, length(CI.lower_AATE))
+      CI.lower_WBATE <- sum(WBATE * x$results$Est.q) - zval * se_WBATE
+      CI.upper_WBATE <- rep(Inf, length(CI.lower_WBATE))
     }
+  }
+  
+  if (LBATE){
+    est_LBATE.p <- max(x$results$Est.p)
+    CI.lower_LBATE <- max(x$results$Est.q - x$opt$cval * x$results$Se.q)
+    CI.upper_LBATE <- max(x$results$Est.q + x$opt$cval * x$results$Se.q)
   }
 
   if (output == "main"){
@@ -664,16 +685,31 @@ summary.rd2d <- function(object, ...) {
       if (i %in% subset) cat(paste(row_vals, collapse = "  "), "\n")
     }
 
-    if (!is.null(AATE)){
+    if (!is.null(WBATE)){
       cat(paste(rep("-", sum(col_widths) + 2 * (length(headers) - 1)), collapse = ""), "\n")
-      index_formatted <- formatC("AATE", width = col_widths[1], format = "s")
+      index_formatted <- formatC("WBATE", width = col_widths[1], format = "s")
       b1_formatted <- formatC("", width = col_widths[2], format = "s")
       b2_formatted <- formatC("", width = col_widths[3], format = "s")
-      coef_formatted <- formatC(est_AATE, format = "f", digits = 4, width = col_widths[4])
-      zvalues_formatted <- formatC(zvalue_AATE, format = "f", digits = 4, width = col_widths[5])
-      pvalues_formatted <- formatC(pvalue_AATE, format = "f", digits = 4, width = col_widths[6])
-      ci_formatted <- formatC(paste0("[", formatC(CI.lower_AATE, format = "f", digits = 4),
-                                     ", ", formatC(CI.upper_AATE, format = "f", digits = 4), "]"),
+      coef_formatted <- formatC(est_WBATE, format = "f", digits = 4, width = col_widths[4])
+      zvalues_formatted <- formatC(zvalue_WBATE, format = "f", digits = 4, width = col_widths[5])
+      pvalues_formatted <- formatC(pvalue_WBATE, format = "f", digits = 4, width = col_widths[6])
+      ci_formatted <- formatC(paste0("[", formatC(CI.lower_WBATE, format = "f", digits = 4),
+                                     ", ", formatC(CI.upper_WBATE, format = "f", digits = 4), "]"),
+                              width = col_widths[7], format = "s")
+      row_vals <- c(index_formatted, b1_formatted, b2_formatted, coef_formatted, zvalues_formatted,pvalues_formatted, ci_formatted)
+      cat(paste(row_vals, collapse = "  "), "\n")
+    }
+    
+    if (LBATE){
+      cat(paste(rep("-", sum(col_widths) + 2 * (length(headers) - 1)), collapse = ""), "\n")
+      index_formatted <- formatC("LBATE", width = col_widths[1], format = "s")
+      b1_formatted <- formatC("", width = col_widths[2], format = "s")
+      b2_formatted <- formatC("", width = col_widths[3], format = "s")
+      coef_formatted <- formatC(est_LBATE.p, format = "f", digits = 4, width = col_widths[4])
+      zvalues_formatted <- formatC("", width = col_widths[5], format = "f")
+      pvalues_formatted <- formatC("", width = col_widths[6], format = "f")      
+      ci_formatted <- formatC(paste0("[", formatC(CI.lower_LBATE, format = "f", digits = 4),
+                                     ", ", formatC(CI.upper_LBATE, format = "f", digits = 4), "]"),
                               width = col_widths[7], format = "s")
       row_vals <- c(index_formatted, b1_formatted, b2_formatted, coef_formatted, zvalues_formatted,pvalues_formatted, ci_formatted)
       cat(paste(row_vals, collapse = "  "), "\n")
