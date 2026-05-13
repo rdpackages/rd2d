@@ -20,21 +20,6 @@ install.packages('rd2d')
 
 - Illustration: [Simulation and estimation](R/rd2d_illustration.R), [Plots](R/rd2d_plot.R). Generated illustration output is written to `R/output/` and is not tracked by git.
 
-## Development
-
-The R package source lives in [`R/rd2d`](R/rd2d/). The remaining files in [`R`](R/) are illustration scripts and generated output.
-
-From the repository root, check the package with:
-
-```sh
-R CMD check --no-manual R/rd2d
-```
-
-GitHub Actions runs this check on Linux, macOS, and Windows for pull requests and pushes that touch the R package source.
-
-Research papers and replication files are maintained separately from this package repository.
-
-
 ## References
 
 For overviews and introductions, see [rdpackages website](https://rdpackages.github.io).
