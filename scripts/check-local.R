@@ -49,14 +49,7 @@ run <- function(command, args = character(), wd = repo_root) {
   oldwd <- getwd()
   on.exit(setwd(oldwd), add = TRUE)
   setwd(wd)
-  child_env <- character()
-  if (nzchar(Sys.getenv("R_LIBS_USER"))) {
-    child_env <- c(child_env, paste0("R_LIBS_USER=", Sys.getenv("R_LIBS_USER")))
-  }
-  if (nzchar(Sys.getenv("R_LIBS"))) {
-    child_env <- c(child_env, paste0("R_LIBS=", Sys.getenv("R_LIBS")))
-  }
-  status <- system2(command, args, env = child_env)
+  status <- system2(command, args)
   if (!identical(status, 0L)) {
     stop(sprintf("Command failed with status %s: %s", status, command), call. = FALSE)
   }

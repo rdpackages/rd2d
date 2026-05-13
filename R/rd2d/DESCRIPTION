@@ -6,7 +6,7 @@ Authors@R: c(
     person(given = "Matias D.", family = "Cattaneo", email = "matias.d.cattaneo@gmail.com", role = c("aut", "cre")),
     person(given = "Rocio", family = "Titiunik", email = "rocio.titiunik@gmail.com", role = "aut"),
     person(given = "Ruiqi Rae", family = "Yu", email = "raeyuuuu@gmail.com", role = "aut"))
-URL: https://rdpackages.github.io/rd2d/,
+URL: https://rdpackages.github.io/,
     https://github.com/rdpackages/rd2d
 BugReports: https://github.com/rdpackages/rd2d/issues
 Description: Provides pointwise and uniform estimation and inference methods for boundary discontinuity (BD) designs,

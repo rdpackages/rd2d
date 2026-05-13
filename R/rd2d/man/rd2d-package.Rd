@@ -47,7 +47,7 @@ rd2d: Causal Inference in Boundary Discontinuity Designs.}
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://rdpackages.github.io/rd2d/}
+  \item \url{https://rdpackages.github.io/}
   \item \url{https://github.com/rdpackages/rd2d}
   \item Report bugs at \url{https://github.com/rdpackages/rd2d/issues}
 }
