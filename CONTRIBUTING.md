@@ -4,18 +4,31 @@ The R package source lives in `R/rd2d`. Run package-development commands from th
 
 ## Local Checks
 
-From the repository root:
+For routine development checks from the repository root:
 
 ```sh
-R CMD check --no-manual R/rd2d
+Rscript scripts/check-local.R --dev
 ```
 
-From the package root:
+For the release-style local check matching the CRAN gate:
 
 ```sh
-cd R/rd2d
-R CMD check --no-manual .
+Rscript scripts/check-local.R --release
 ```
+
+The release check regenerates roxygen documentation, runs the testthat suite,
+builds the source tarball, and runs `R CMD check --no-manual --as-cran`.
+Generated check directories and tarballs are removed after a successful run.
+
+To enable the optional pre-push hook for future local development:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+The hook runs a non-mutating `R CMD check --no-manual R/rd2d` before each push.
+Set `RD2D_SKIP_PRE_PUSH=1` only for emergency pushes where the local check has
+already been run separately.
 
 ## Repository Layout
 
