@@ -6,9 +6,6 @@ The `rd2d` package provides R implementations of pointwise and uniform estimatio
 The main functions are `rd2d()` and `rdbw2d()` for location-based methods, and `rd2d.distance()` and `rdbw2d.distance()` for distance-based methods. Both approaches support sharp and fuzzy designs. The distance-based methods target the level of the boundary average treatment effect curve using bivariate scores reduced to signed distance-based running variables.
 Summary methods can also report weighted and largest boundary average treatment effects (WBATE and LBATE) when the fitted object stores the required covariance matrix, including intention-to-treat, first-stage, and fuzzy outputs.
 
-This work was supported in part by the National Science Foundation through grants [SES-2019432](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2019432), [DMS-2210561](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2210561), [SES-2241575](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2241575), and [SES-2342226](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2342226), and by the National Institute for Food and Agriculture through grant [2024-67023-42704](https://www.nifa.usda.gov/data).
-
-
 ## R Implementation
 
 To install/update in R type:
@@ -48,6 +45,10 @@ _Journal of Econometrics_, revise and resubmit.<br>
 - Cattaneo, Titiunik and Yu (2026): [Estimation and Inference in Boundary Discontinuity Designs: Pooling-Based Methods](https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2026_BDD-Pooling.pdf).<br>
 Working paper.<br>
 [Supplemental Appendix](https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2026_BDD-Pooling--Supplement.pdf).
+
+## Funding
+
+This work was supported in part by the National Science Foundation through grants [SES-2019432](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2019432), [DMS-2210561](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2210561), [SES-2241575](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2241575), and [SES-2342226](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2342226), and by the National Institute for Food and Agriculture through grant [2024-67023-42704](https://www.nifa.usda.gov/data).
 
 
 <br><br>
