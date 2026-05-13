@@ -8,9 +8,6 @@ Summary methods can also report weighted and largest boundary average treatment 
 
 This work was supported in part by the National Science Foundation through grants [SES-2019432](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2019432), [DMS-2210561](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2210561), [SES-2241575](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2241575), and [SES-2342226](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2342226), and by the National Institute for Food and Agriculture through grant [2024-67023-42704](https://www.nifa.usda.gov/data).
 
-## RD Packages
-
-https://rdpackages.github.io/
 
 ## R Implementation
 
@@ -36,11 +33,6 @@ R CMD check --no-manual R/rd2d
 GitHub Actions runs this check on Linux, macOS, and Windows for pull requests and pushes that touch the R package source.
 
 Research papers and replication files are maintained separately from this package repository.
-
-
-## Repository
-
-For source code and related files, visit [`rd2d` repository](https://github.com/rdpackages/rd2d/).
 
 
 ## References
