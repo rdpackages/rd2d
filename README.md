@@ -8,13 +8,9 @@ Summary methods can also report weighted and largest boundary average treatment 
 
 This work was supported in part by the National Science Foundation through grants [SES-2019432](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2019432), [DMS-2210561](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2210561), [SES-2241575](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2241575), and [SES-2342226](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2342226), and by the National Institute for Food and Agriculture through grant [2024-67023-42704](https://www.nifa.usda.gov/data).
 
-## Website
+## RD Packages
 
-https://rdpackages.github.io/rd2d
-
-## Queries and Requests
-
-Please email: [rdpackages@googlegroups.com](mailto:rdpackages@googlegroups.com)
+https://rdpackages.github.io/
 
 ## R Implementation
 
