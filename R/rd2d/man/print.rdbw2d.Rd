@@ -23,7 +23,7 @@ The print method for bandwidth selection for 2D local polynomial RD design
 Supported methods: \code{\link{print.rdbw2d}}, \code{\link{summary.rdbw2d}}.
 }
 \author{
-Matias D. Cattaneo, Princeton University. \email{cattaneo@princeton.edu} \cr
-Rocío Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
-Ruiqi Rae Yu, Princeton University. \email{rae.yu@princeton.edu}
+Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
+Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 }

@@ -2,133 +2,255 @@
 % Please edit documentation in R/rd2d.R
 \name{rd2d}
 \alias{rd2d}
-\title{Two-Dimensional Local Polynomial Regression Discontinuity Design}
+\title{Location-Based Methods for Boundary Discontinuity Design}
 \usage{
 rd2d(
   Y,
   X,
-  t,
+  assignment,
   b,
   h = NULL,
   deriv = c(0, 0),
   tangvec = NULL,
   p = 1,
-  q = 2,
+  q = NULL,
   kernel = c("tri", "triangular", "epa", "epanechnikov", "uni", "uniform", "gau",
     "gaussian"),
   kernel_type = c("prod", "rad"),
   vce = c("hc1", "hc0", "hc2", "hc3"),
   masspoints = c("check", "adjust", "off"),
-  C = NULL,
+  cluster = NULL,
   level = 95,
-  cbands = TRUE,
+  params.other = NULL,
+  params.cov = NULL,
   side = c("two", "left", "right"),
   repp = 1000,
-  bwselect = c("mserd", "imserd", "msetwo", "imsetwo", "user provided"),
+  bwselect = c("mserd", "cerrd", "imserd", "icerrd", "msetwo", "certwo", "imsetwo",
+    "icertwo", "user provided"),
+  bwparam = c("main", "itt"),
   method = c("dpi", "rot"),
   bwcheck = 50 + p + 1,
   scaleregul = 3,
   scalebiascrct = 1,
-  stdvars = TRUE
+  stdvars = TRUE,
+  fuzzy = NULL
 )
 }
 \arguments{
-\item{Y}{Dependent variable; a numeric vector of length \eqn{N}, where \eqn{N} is the sample size.}
+\item{Y}{Dependent variable; a numeric vector of length \eqn{N}, where
+\eqn{N} is the sample size.}
 
-\item{X}{Bivariate running variable (a.k.a score variable); a numeric matrix or data frame of dimension \eqn{N \times 2}, with each row \eqn{\mathbf{X}_i = (X_{1i}, X_{2i})}.}
+\item{X}{Bivariate running variable (a.k.a score variable); a numeric
+matrix or data frame of dimension \eqn{N \times 2}, with each row
+\eqn{\mathbf{X}_i = (X_{1i}, X_{2i})}.}
 
-\item{t}{Treatment indicator; a logical or binary vector indicating treatment assignment (\eqn{t_i = 1} if treated, \eqn{t_i = 0} otherwise).}
+\item{assignment}{Treatment assignment indicator; a logical or binary vector
+indicating assignment to the treated side.}
 
-\item{b}{Evaluation points; a matrix or data frame specifying boundary points \eqn{\mathbf{b}_j = (b_{1j}, b_{2j})}, of dimension \eqn{J \times 2}.}
+\item{b}{Evaluation points; a matrix or data frame specifying boundary
+points \eqn{\mathbf{b}_j = (b_{1j}, b_{2j})}, of dimension
+\eqn{J \times 2}.}
 
-\item{h}{Bandwidths. Either a positive scalar (same bandwidth for all dimensions and groups), or a matrix/data frame of size \eqn{J \times 4}, corresponding to \eqn{h_{\text{control},1}},
-\eqn{h_{\text{control},2}}, \eqn{h_{\text{treated},1}}, \eqn{h_{\text{treated},2}} at each evaluation point. If not specified, bandwidth \code{h} is computed by the companion command
-\code{rdbw2d}. Default is \code{h = NULL}.}
+\item{h}{Bandwidths. Either a positive scalar (same bandwidth for all
+dimensions and groups), or a matrix/data frame of size \eqn{J \times 4},
+corresponding to \eqn{h_{\text{control},1}},
+\eqn{h_{\text{control},2}}, \eqn{h_{\text{treated},1}},
+\eqn{h_{\text{treated},2}} at each evaluation point. If not specified,
+bandwidth \code{h} is computed by the companion command
+\code{rdbw2d}; for fuzzy designs, \code{bwparam} determines whether
+automatic bandwidths target the fuzzy Wald ratio or the reduced-form
+outcome discontinuity. Default is \code{h = NULL}.}
 
-\item{deriv}{The order of the derivatives of the regression functions to be estimated; a numeric vector of length 2 specifying the number of derivatives in each coordinate (e.g., \eqn{c(1,2)} corresponds to \eqn{\partial_1 \partial_2^2}).}
+\item{deriv}{The order of the derivatives of the regression functions to be
+estimated; a nonnegative integer vector of length 2 specifying the number
+of derivatives in each coordinate (e.g., \eqn{c(1,2)} corresponds to
+\eqn{\partial_1 \partial_2^2}).}
 
-\item{tangvec}{Tangent vectors; a matrix or data frame of dimension \eqn{J \times 2} specifying directional derivatives. Overrides \code{deriv} if provided.}
+\item{tangvec}{Tangent vectors; a matrix or data frame of dimension
+\eqn{J \times 2} specifying directional derivatives. Overrides
+\code{deriv} if provided.}
 
 \item{p}{Polynomial order for point estimation (\eqn{p = 1} by default).}
 
-\item{q}{Polynomial order for robust confidence interval construction. Must satisfy \eqn{q \geq p}; default is \eqn{q = p + 1}.}
+\item{q}{Polynomial order for robust confidence interval construction. Must
+satisfy \eqn{q \geq p}; default is \eqn{q = p + 1}.}
 
-\item{kernel}{Kernel function to use. Options are \code{"unif"}, \code{"uniform"} (uniform), \code{"triag"}, \code{"triangular"} (triangular, default), and \code{"epan"}, \code{"epanechnikov"} (Epanechnikov).}
+\item{kernel}{Kernel function to use. Options are \code{"tri"} or
+\code{"triangular"} (triangular, default), \code{"epa"} or
+\code{"epanechnikov"} (Epanechnikov), \code{"uni"} or \code{"uniform"}
+(uniform), and \code{"gau"} or \code{"gaussian"} (Gaussian).}
 
-\item{kernel_type}{Kernel structure. Either \code{"prod"} for product kernels (default) or \code{"rad"} for radial kernels.}
+\item{kernel_type}{Kernel structure. Either \code{"prod"} for product
+kernels (default) or \code{"rad"} for radial kernels.}
 
 \item{vce}{Variance-covariance estimation method. Options are:
 \itemize{
-\item \code{"hc0"}: heteroskedasticity-robust plug-in residual variance estimator without small-sample adjustment.
-\item \code{"hc1"}: heteroskedasticity-robust plug-in residual variance estimator with HC1 small-sample adjustment (default).
-\item \code{"hc2"}: heteroskedasticity-robust plug-in residual variance estimator with HC2 adjustment.
-\item \code{"hc3"}: heteroskedasticity-robust plug-in residual variance estimator with HC3 adjustment.
-}}
+\item \code{"hc0"}: heteroskedasticity-robust plug-in residual variance
+estimator without small-sample adjustment.
+\item \code{"hc1"}: heteroskedasticity-robust plug-in residual variance
+estimator with HC1 small-sample adjustment (default).
+\item \code{"hc2"}: heteroskedasticity-robust plug-in residual variance
+estimator with HC2 adjustment.
+\item \code{"hc3"}: heteroskedasticity-robust plug-in residual variance
+estimator with HC3 adjustment.
+}
+Default is \code{"hc1"}.}
 
-\item{masspoints}{Handling of mass points in the running variable. Options are:
+\item{masspoints}{Handling of mass points in the running variable. Options
+are:
 \itemize{
-\item \code{"check"}: detects presence of mass points and reports the number of unique observations (default).
-\item \code{"adjust"}: adjusts preliminary bandwidths to ensure a minimum number of unique observations within each side of the cutoff.
+\item \code{"check"}: detects presence of mass points and reports the
+number of unique observations (default).
+\item \code{"adjust"}: adjusts preliminary bandwidths to ensure a minimum
+number of unique observations within each side of the cutoff.
 \item \code{"off"}: ignores presence of mass points.
 }}
 
-\item{C}{Cluster ID variable used for cluster-robust variance estimation. Default is \code{C = NULL}.}
+\item{cluster}{Cluster ID variable used for cluster-robust variance estimation
+with degrees-of-freedom weights. Default is \code{cluster = NULL}.}
 
-\item{level}{Nominal confidence level for intervals/bands, between 0 and 100 (default is 95).}
+\item{level}{Nominal confidence level for intervals/bands, between 0 and
+100 (default is 95).}
 
-\item{cbands}{Logical. If \code{TRUE}, also compute uniform confidence bands (default is \code{FALSE}).}
+\item{params.other}{Optional character vector requesting companion-side
+result tables. Options are \code{"main.0"}, \code{"main.1"} for sharp
+fits, and \code{"itt.0"}, \code{"itt.1"}, \code{"fs.0"},
+\code{"fs.1"} for fuzzy fits. Unrequested companion tables are returned
+as \code{NA}. Default is \code{NULL}.}
 
-\item{side}{Type of confidence interval. Options: \code{"two"} (two-sided, default), \code{"left"} (left tail), or \code{"right"} (right tail).}
+\item{params.cov}{Optional character vector requesting covariance matrices
+to store for later use by \code{\link{summary.rd2d}}. Options are
+\code{"main"}, \code{"main.0"}, \code{"main.1"}, \code{"itt"},
+\code{"itt.0"}, \code{"itt.1"}, \code{"fs"}, \code{"fs.0"}, and
+\code{"fs.1"}, subject to the sharp/fuzzy design and
+\code{params.other}. Default is \code{NULL}, which computes no covariance
+matrices.}
 
-\item{repp}{Number of repetitions for critical value simulation (used in uniform confidence bands). Default is 1000.}
+\item{side}{Type of confidence interval. Options: \code{"two"} (two-sided,
+default), \code{"left"} (left tail), or \code{"right"} (right tail).}
+
+\item{repp}{Number of repetitions for critical value simulation (used in
+uniform confidence bands). Default is 1000.}
 
 \item{bwselect}{Bandwidth selection strategy. Options:
 \itemize{
-\item \code{"mserd"}. One common MSE-optimal bandwidth selector for the boundary RD treatment effect estimator for each evaluation point (default).
-\item \code{"imserd"}. IMSE-optimal bandwidth selector for the boundary RD treatment effect estimator based on all evaluation points.
-\item \code{"msetwo"}. Two different MSE-optimal bandwidth selectors (control and treatment) for the boundary RD treatment effect estimator for each evaluation point.
-\item \code{"imsetwo"}. Two IMSE-optimal bandwidth selectors (control and treatment) for the boundary RD treatment effect estimator based on all evaluation points.
-\item \code{"user provided"}. User-provided bandwidths. If \code{h} is not \code{NULL}, then \code{bwselect} is overwritten to \code{"user provided"}.
+\item \code{"mserd"}. One common MSE-optimal bandwidth selector for the
+boundary RD treatment effect estimator for each evaluation point (default).
+\item \code{"cerrd"}. CER-optimal counterpart of \code{"mserd"}.
+\item \code{"imserd"}. IMSE-optimal bandwidth selector for the boundary RD
+treatment effect estimator based on all evaluation points.
+\item \code{"icerrd"}. CER-optimal counterpart of \code{"imserd"}.
+\item \code{"msetwo"}. Two different MSE-optimal bandwidth selectors
+(control and treatment) for the boundary RD treatment effect estimator for
+each evaluation point.
+\item \code{"certwo"}. CER-optimal counterpart of \code{"msetwo"}.
+\item \code{"imsetwo"}. Two IMSE-optimal bandwidth selectors (control and
+treatment) for the boundary RD treatment effect estimator based on all
+evaluation points.
+\item \code{"icertwo"}. CER-optimal counterpart of \code{"imsetwo"}.
+\item \code{"user provided"}. User-provided bandwidths. If \code{h} is not
+\code{NULL}, then \code{bwselect} is overwritten to \code{"user provided"}.
 }}
 
-\item{method}{Bandwidth selection method for bias estimator based on local polynomials. Either \code{"dpi"} (default) for data-driven plug-in MSE optimal bandwidth selector or \code{"rot"} for rule-of-thumb bandwidth selector.}
+\item{bwparam}{Target parameter used for fuzzy automatic bandwidth
+selection. Options are \code{"main"} (default), which selects bandwidths for
+the linearized fuzzy Wald ratio, and \code{"itt"}, which selects bandwidths
+for the reduced-form outcome discontinuity. This option is ignored in sharp
+designs and when \code{h} is supplied.}
 
-\item{bwcheck}{If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} observations are used. If \code{masspoints == "adjust"}, ensure at least \code{bwcheck} unique observations are used. The program stops with “not enough observations” if sample size \eqn{N} < \code{bwcheck}. Default is \code{50 + p + 1}.}
+\item{method}{Bandwidth selection method for bias estimator based on local
+polynomials. Either \code{"dpi"} (default) for data-driven plug-in MSE
+optimal bandwidth selector or \code{"rot"} for rule-of-thumb bandwidth
+selector.}
 
-\item{scaleregul}{Scaling factor for the regularization term in bandwidth selection. Default is 3.}
+\item{bwcheck}{If a positive integer is provided, the preliminary bandwidth
+used in the calculations is enlarged so that at least \code{bwcheck} unique
+observations are used. Default is \code{50 + p + 1}.}
 
-\item{scalebiascrct}{Scaling factor used for bias correction based on higher order expansions. Default is 1.}
+\item{scaleregul}{Scaling factor for the regularization term in bandwidth
+selection. Default is 3.}
 
-\item{stdvars}{Logical. If TRUE, the running variables \eqn{X_{1i}} and \eqn{X_{2i}} are standardized before computing the bandwidths. Default is \code{TRUE}. Standardization only affects automatic bandwidth selection if bandwidths are not manually provided via \code{h}.}
+\item{scalebiascrct}{Scaling factor used for bias correction based on higher
+order expansions. Default is 1.}
+
+\item{stdvars}{Logical. If \code{TRUE}, the running variables \eqn{X_{1i}}
+and \eqn{X_{2i}} are standardized before computing automatic bandwidths.
+Default is \code{TRUE}. Standardization only affects automatic bandwidth
+selection when bandwidths are not manually provided through \code{h}.}
+
+\item{fuzzy}{Optional treatment receipt/status variable used for fuzzy RD
+estimation. The default is \code{NULL}, which estimates the sharp RD design.}
 }
 \value{
 An object of class \code{"rd2d"}, a list with components:
 \describe{
-\item{\code{results}}{A data frame with point estimates, variances, p-values, confidence intervals, confidence bands, bandwidths and effective sample size at each evaluation point.
+\item{\code{main}}{A data frame with point estimates, standard errors,
+t-statistics, p-values, confidence intervals, and
+bandwidths at each evaluation point.
 \describe{
-\item{\code{b1}, \code{b2}}{First and second coordinate of evaluation points \eqn{\mathbf{b} = (b_1,b_2)}.}
-\item{\code{Est.p}}{Point estimate of \eqn{\widehat{\tau}_p(\mathbf{b})}.}
-\item{\code{Se.p}}{Standard error of \eqn{\widehat{\tau}_p(\mathbf{b})}.}
-\item{\code{Est.q}}{Bias-corrected point estimate of \eqn{\widehat{\tau}_q(\mathbf{b})}.}
-\item{\code{Se.q}}{Standard error of bias-corrected estimate \eqn{\widehat{\tau}_q(\mathbf{b})}.}
-\item{\code{p-value}}{P-value based on t-statistic with bias-corrected estimate.}
-\item{\code{CI.lower}, \code{CI.upper}}{Pointwise confidence intervals.}
-\item{\code{CB.lower}, \code{CB.upper}}{Uniform confidence bands if computed.}
-\item{\code{h01}, \code{h02}, \code{h11}, \code{h12}}{Bandwidths used in each coordinate and group. The four columns correspond to \eqn{h_{\text{control},1}},
-\eqn{h_{\text{control},2}}, \eqn{h_{\text{treated},1}}, \eqn{h_{\text{treated},2}} respectively.}
-\item{\code{Nh0}, \code{Nh1}}{Effective sample size on each side of the cutoff.}
+\item{\code{b1}, \code{b2}}{First and second coordinate of
+evaluation points \eqn{\mathbf{b} = (b_1,b_2)}.}
+\item{\code{estimate.p}}{Point estimate \eqn{\widehat{\tau}_p(\mathbf{b})}.}
+\item{\code{std.err.p}}{Standard error of
+\eqn{\widehat{\tau}_p(\mathbf{b})}.}
+\item{\code{estimate.q}}{Bias-corrected point estimate
+\eqn{\widehat{\tau}_q(\mathbf{b})}.}
+\item{\code{std.err.q}}{Standard error of the bias-corrected estimate
+\eqn{\widehat{\tau}_q(\mathbf{b})}.}
+\item{\code{t.value}, \code{p.value}}{t-statistic and p-value based
+on the bias-corrected estimate.}
+\item{\code{ci.lower}, \code{ci.upper}}{Pointwise confidence
+intervals.}
+\item{\code{h01}, \code{h02}, \code{h11}, \code{h12}}{Bandwidths
+used in each coordinate and group.}
+\item{\code{N.Co}, \code{N.Tr}}{Effective sample size for the
+control and treatment sides, respectively.}
 }
 }
-\item{\code{results.A0}}{Same structure as \code{results} but for control group outcomes.}
-\item{\code{results.A1}}{Same structure as \code{results} but for treated group outcomes.}
-\item{\code{cov.q}}{Covariance matrix for bias-corrected estimates \eqn{\widehat{\tau}_q(\mathbf{b})} for all point evaluations \eqn{\mathbf{b}}.}
+\item{\code{main.0}, \code{main.1}}{For sharp RD only, companion-side
+outcome tables requested through \code{params.other}; otherwise
+\code{NA}.}
+\item{\code{bw}}{Bandwidth and effective sample size table.}
+\item{\code{itt}}{For fuzzy RD only, same structure as \code{main} but for
+the reduced-form or intention-to-treat outcome discontinuity.}
+\item{\code{itt.0}, \code{itt.1}}{For fuzzy RD only, outcome summaries
+for the control and treated sides requested through
+\code{params.other}; otherwise \code{NA}.}
+\item{\code{fs}}{For fuzzy RD only, same structure as \code{main} but for
+the first-stage treatment receipt/status discontinuity.}
+\item{\code{fs.0}, \code{fs.1}}{For fuzzy RD only, first-stage summaries
+for the control and treated sides requested through
+\code{params.other}; otherwise \code{NA}.}
+\item{\code{tau.hat}}{Point estimates at each evaluation point.}
+\item{\code{tau.hat.q}}{Bias-corrected estimates at each evaluation
+point.}
+\item{\code{se.hat}}{Standard errors corresponding to \code{tau.hat}.}
+\item{\code{se.hat.q}}{Standard errors corresponding to
+\code{tau.hat.q}.}
+\item{\code{params.cov}}{List of covariance matrices for aggregate
+inference in \code{\link{summary.rd2d}}. Contains only entries requested
+through \code{params.cov}.}
+\item{\code{cb}}{List with pointwise confidence intervals.}
+\item{\code{pvalues}}{Two-sided p-values based on bias-corrected
+estimates.}
+\item{\code{tvalues}}{t-statistics based on bias-corrected estimates.}
+\item{\code{tau.itt}, \code{tau.itt.q}}{For fuzzy RD, reduced-form outcome
+estimates using polynomial orders \eqn{p} and \eqn{q}; otherwise
+\code{NA}.}
+\item{\code{tau.fs}, \code{tau.fs.q}}{For fuzzy RD, first-stage treatment receipt/status
+estimates using polynomial orders \eqn{p} and \eqn{q}; otherwise
+\code{NA}.}
+\item{\code{rdmodel}}{Character label describing the fitted RD model.}
+\item{\code{call}}{Matched function call.}
 \item{\code{opt}}{List of options used in the function call.}
-\item{\code{rdmodel}}{String label for the RD model.}
 }
 }
 \description{
-\code{rd2d} implements bivariate local polynomial boundary regression discontinuity (RD) point estimators with robust bias-corrected pointwise confidence intervals and
-uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025a) with a companion software article Cattaneo, Titiunik and Yu (2025b). For robust bias-correction, see Calonico, Cattaneo, Titiunik (2014).
+\code{rd2d} implements location-based local polynomial boundary
+discontinuity (BD) point estimators with robust bias-corrected pointwise
+confidence intervals and uniform confidence bands.
+See \href{https://arxiv.org/abs/2505.05670}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026)}
+for methodological background.
 
 Companion commands are: \code{rdbw2d} for data-driven bandwidth selection.
 
@@ -138,34 +260,47 @@ For other packages of RD designs, visit
 \examples{
 # Simulated example
 set.seed(123)
-n <- 5000
+n <- 800
 X1 <- rnorm(n)
 X2 <- rnorm(n)
-t <- as.numeric(X1 > 0)
-Y <- 3 + 2 * X1 + 1.5 * X2 + t + rnorm(n)
+assignment <- as.numeric(X1 > 0)
+Y <- 3 + 2 * X1 + 1.5 * X2 + assignment + rnorm(n)
 X <- cbind(X1, X2)
 b <- matrix(c(0, 0, 0, 1), ncol = 2)
 
 # Estimate treatment effect using rd2d
-result <- rd2d(Y, X, t, b, cbands = TRUE)
+result <- rd2d(Y, X, assignment, b, params.cov = "main",
+               masspoints = "off", bwcheck = 10, repp = 49)
 print(result)
-summary(result)
+summary(result, cbands = "main")
+
+# Fuzzy RD example
+fuzzy <- as.numeric(runif(n) < ifelse(assignment == 1, 0.8, 0.2))
+Y.fuzzy <- 3 + 2 * X1 + 1.5 * X2 + 1.5 * fuzzy + rnorm(n)
+result.fuzzy <- rd2d(Y.fuzzy, X, assignment, b, fuzzy = fuzzy,
+                     bwparam = "main", masspoints = "off",
+                     bwcheck = 10, repp = 49)
+print(result.fuzzy)
+summary(result.fuzzy, output = "itt")
 }
 \references{
 \itemize{
-\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025a).}
-Estimation and Inference in Boundary Discontinuity Designs}
-\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_rd2d.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025b).}
-rd2d: Causal Inference in Boundary Discontinuity Designs}
-\item{\href{https://rdpackages.github.io/references/Calonico-Cattaneo-Titiunik_2014_ECMA.pdf}{Calonico, S., Cattaneo, M. D., Titiunik, R. (2014)}
-Robust Nonparametric Confidence Intervals for Regression-Discontinuity Designs}
+\item{Cattaneo, M. D., and Titiunik, R. (2022).
+Regression Discontinuity Designs. \doi{10.1146/annurev-economics-051520-021409}.}
+\item{\href{https://arxiv.org/abs/2505.05670}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026).}
+Estimation and Inference in Boundary Discontinuity Designs: Location-Based Methods.}
+\item{\href{https://arxiv.org/abs/2511.06474}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026).}
+Boundary Discontinuity Designs: Theory and Practice.}
+\item{\href{https://arxiv.org/abs/2505.07989}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2025).}
+rd2d: Causal Inference in Boundary Discontinuity Designs.}
 }
 }
 \seealso{
-\code{\link{rdbw2d}}, \code{\link{print.rd2d}}, \code{\link{summary.rd2d}}
+\code{\link{rdbw2d}}, \code{\link{print.rd2d}},
+\code{\link{summary.rd2d}}
 }
 \author{
-Matias D. Cattaneo, Princeton University. \email{cattaneo@princeton.edu} \cr
-Rocío Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
-Ruiqi Rae Yu, Princeton University. \email{rae.yu@princeton.edu}
+Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
+Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 }

@@ -3,45 +3,58 @@
 \docType{package}
 \name{rd2d-package}
 \alias{rd2d-package}
-\title{rd2d: Two Dimensional Local Polynomial Regression Discontinuity Design}
+\title{rd2d: Estimation and Inference for Boundary Discontinuity Designs}
 \description{
-This package implements estimation and inference procedures for boundary regression discontinuity (RD) designs
-using local polynomial methods, based on either bivariate coordinates or distance-based approaches.
-Methods are developed in \href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, Titiunik, and Yu (2025a)}. A companion software article is available
-at \href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_rd2d.pdf}{Cattaneo, Titiunik, and Yu (2025b)}.
+\pkg{rd2d} implements pointwise and uniform estimation and inference
+procedures for boundary discontinuity (BD) designs using local polynomial
+methods. The package includes location-based and distance-based methods,
+sharp and fuzzy designs, automatic bandwidth selection, pointwise confidence
+intervals, and uniform confidence bands.
+Distance-based methods in this package target level effects at
+two-dimensional boundary points.
 
-Included functions are: \link{rd2d} for inference and estimation based on bivariate coordinates,
-\link{rdbw2d} for data-driven bandwidth selection based on bivariate coordinates,
-\link{rd2d.dist} for distance-based inference and estimation,
-\link{rdbw2d.dist} for distance-based bandwidth selection.
+Included functions are: \link{rd2d} for location-based estimation and
+inference, \link{rdbw2d} for location-based bandwidth selection,
+\link{rd2d.distance} for distance-based estimation and inference, and
+\link{rdbw2d.distance} for distance-based bandwidth selection.
 
-\code{print()} and \code{summary()} methods are available all four functions.
+\code{print()} and \code{summary()} methods are available for all four
+functions.
 
-Related Stata, R, and Python packages useful for inference in RD designs are described in the following website:
+Related Stata, R, and Python packages useful for inference in RD designs are
+described at:
 
-\href{ https://rdpackages.github.io/}{ https://rdpackages.github.io/}
+\href{https://rdpackages.github.io/}{https://rdpackages.github.io/}
 
-For an introduction to regression discontinuity design, see \href{https://www.cambridge.org/core/elements/practical-introduction-to-regression-discontinuity-designs/C6A70A32359115510AAC370A7869AE2F}{Cattaneo, Idrobo, Titiunik (2024)} and references therein.
+For an introduction to regression discontinuity designs, see
+Cattaneo and Titiunik (2022, \doi{10.1146/annurev-economics-051520-021409})
+and references therein.
 }
 \references{
 \itemize{
-\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025a).}
-Estimation and Inference in Boundary Discontinuity Designs}
-\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_rd2d.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025b).}
-rd2d: Causal Inference in Boundary Discontinuity Designs}
-\item{\href{https://www.cambridge.org/core/elements/practical-introduction-to-regression-discontinuity-designs/C6A70A32359115510AAC370A7869AE2F}{Cattaneo, M. D., Idrobo, N., Titiunik, R. (2024).}
-A Practical Introduction to Regression Discontinuity Designs: Extensions}
+\item{Cattaneo, M. D., and Titiunik, R. (2022).
+Regression Discontinuity Designs. \doi{10.1146/annurev-economics-051520-021409}.}
+\item{\href{https://arxiv.org/abs/2505.05670}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026).}
+Estimation and Inference in Boundary Discontinuity Designs: Location-Based Methods.}
+\item{\href{https://arxiv.org/abs/2510.26051}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026).}
+Estimation and Inference in Boundary Discontinuity Designs: Distance-Based Methods.}
+\item{\href{https://arxiv.org/abs/2511.06474}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026).}
+Boundary Discontinuity Designs: Theory and Practice.}
+\item{\href{https://arxiv.org/abs/2505.07989}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2025).}
+rd2d: Causal Inference in Boundary Discontinuity Designs.}
 }
 }
 \seealso{
 Useful links:
 \itemize{
   \item \url{https://rdpackages.github.io/rd2d/}
+  \item \url{https://github.com/rdpackages/rd2d}
+  \item Report bugs at \url{https://github.com/rdpackages/rd2d/issues}
 }
 
 }
 \author{
-Matias Cattaneo, Princeton University. \email{cattaneo@princeton.edu}.
+Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com}.
 Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu}.
-Ruiqi Rae Yu, Princeton University. \email{rae.yu@princeton.edu}.
+Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}.
 }

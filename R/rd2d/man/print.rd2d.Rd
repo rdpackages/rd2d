@@ -12,10 +12,12 @@
 \item{...}{Additional arguments passed to the method (currently ignored).}
 }
 \value{
-No return value. This function is called for its side effects, which are to print the \code{\link{rd2d}} results.
+No return value. This function is called for its side effects, which are to
+print the \code{\link{rd2d}} results.
 }
 \description{
-Prints the results of a 2D local polynomial regression discontinuity (RD) estimation, as obtained from \code{\link{rd2d}}.
+Prints the results of a 2D local polynomial regression discontinuity (RD)
+estimation, as obtained from \code{\link{rd2d}}.
 }
 \seealso{
 \code{\link{rd2d}} for conducting 2D local polynomial RD estimation.
@@ -23,7 +25,7 @@ Prints the results of a 2D local polynomial regression discontinuity (RD) estima
 Supported methods: \code{\link{print.rd2d}}, \code{\link{summary.rd2d}}.
 }
 \author{
-Matias D. Cattaneo, Princeton University. \email{cattaneo@princeton.edu} \cr
-Rocío Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
-Ruiqi Rae Yu, Princeton University. \email{rae.yu@princeton.edu}
+Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
+Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 }

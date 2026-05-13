@@ -12,7 +12,7 @@
 \item{...}{Optional arguments. Supported options include:
 \itemize{
 \item \code{subset}: Integer vector of indices of evaluation points to display. Defaults to all evaluation points.
-\item \code{sep}: Integer vector of controlling the column widths of the output table. Default is \code{c(4, rep(8, 6))}.
+\item \code{sep}: Integer. Controls spacing in the output. Default is \code{8}.
 }}
 }
 \value{
@@ -27,7 +27,7 @@ Summary method for objects of class \code{rdbw2d}, displaying bandwidth selectio
 Supported methods: \code{\link{print.rdbw2d}}, \code{\link{summary.rdbw2d}}.
 }
 \author{
-Matias D. Cattaneo, Princeton University. \email{cattaneo@princeton.edu} \cr
-Rocío Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
-Ruiqi Rae Yu, Princeton University. \email{rae.yu@princeton.edu}
+Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
+Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 }

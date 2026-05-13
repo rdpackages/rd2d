@@ -1,27 +1,31 @@
 Package: rd2d
 Type: Package
-Title: Boundary Regression Discontinuity Designs
-Version: 0.0.3.9000
+Title: Estimation and Inference for Boundary Discontinuity Designs
+Version: 0.1.0
 Authors@R: c(
-    person(given = "Matias D.", family = "Cattaneo", role = "aut"),
-    person(given = "Rocio", family = "Titiunik", role = "aut"),
-    person(given = "Ruiqi Rae", family = "Yu", email = "rae.yu@princeton.edu", role = c("aut", "cre")))
+    person(given = "Matias D.", family = "Cattaneo", email = "matias.d.cattaneo@gmail.com", role = c("aut", "cre")),
+    person(given = "Rocio", family = "Titiunik", email = "rocio.titiunik@gmail.com", role = "aut"),
+    person(given = "Ruiqi Rae", family = "Yu", email = "raeyuuuu@gmail.com", role = "aut"))
 URL: https://rdpackages.github.io/rd2d/,
     https://github.com/rdpackages/rd2d
 BugReports: https://github.com/rdpackages/rd2d/issues
-Description: Provides estimation and inference procedures for boundary regression discontinuity (RD) designs
-    using local polynomial methods, based on either bivariate coordinates or distance-based approaches.
-    Methods are developed in Cattaneo, Titiunik, and Yu (2025) 
-    <https://mdcattaneo.github.io/papers/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf>.
-Imports: MASS, expm, ggplot2, stringr
+Description: Provides pointwise and uniform estimation and inference methods for boundary discontinuity (BD) designs,
+    a causal inference design that generalizes univariate regression discontinuity (RD) designs to settings with bivariate scores.
+    Implements local polynomial methods for location-based and distance-based analyses, including sharp and fuzzy designs,
+    data-driven bandwidth selection, pointwise confidence intervals, and uniform confidence bands. Methodology is developed in
+    Cattaneo, Titiunik, and Yu (2026) <doi:10.48550/arXiv.2505.05670> for location-based methods and
+    Cattaneo, Titiunik, and Yu (2026) <doi:10.48550/arXiv.2510.26051> for distance-based methods.
+    For an overview and empirical guidance, see Cattaneo, Titiunik, and Yu (2026) <doi:10.48550/arXiv.2511.06474>.
+    The companion software article is Cattaneo, Titiunik, and Yu (2025) <doi:10.48550/arXiv.2505.07989>.
+Imports: MASS, expm, ggplot2
 Suggests: testthat (>= 3.0.0)
 License: GPL-2
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
-Author: Matias D. Cattaneo [aut],
-  Rocio Titiunik [aut],
-  Ruiqi Rae Yu [aut, cre]
-Maintainer: Ruiqi Rae Yu <rae.yu@princeton.edu>
+Maintainer: Matias D. Cattaneo <matias.d.cattaneo@gmail.com>
 NeedsCompilation: no
+Author: Matias D. Cattaneo [aut, cre],
+  Rocio Titiunik [aut],
+  Ruiqi Rae Yu [aut]
 Config/testthat/edition: 3
+Config/roxygen2/version: 8.0.0

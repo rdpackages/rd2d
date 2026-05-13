@@ -1,4 +1,7 @@
 ^cran-comments\.md$
+^rd2d-manual\.pdf$
+^.*\.Rcheck$
+^.*\.tar\.gz$
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^README\.Rmd$

@@ -7,38 +7,73 @@
 \method{summary}{rd2d}(object, ...)
 }
 \arguments{
-\item{object}{An object of class \code{rd2d}, typically returned by \code{\link{rd2d}}.}
+\item{object}{An object of class \code{rd2d}, typically returned by
+\code{\link{rd2d}}.}
 
-\item{...}{Optional arguments. Supported options include:
+\item{...}{Optional named arguments. Unsupported option names produce an
+error. Supported options include:
 \itemize{
-\item \code{CBuniform}: Logical. If \code{TRUE}, displays uniform confidence bands;
-if \code{FALSE} (default), displays pointwise confidence intervals.
-\item \code{subset}: Integer vector of indices of evaluation points to display.
-Defaults to all evaluation points.
-\item \code{output}: Character. Use \code{"main"} to display estimation results,
-or \code{"bw"} to display bandwidth information. Default is \code{"main"}.
-\item \code{sep_main}: Integer vector of controlling the column widths of the output table when \code{output = "main"}.
-Default is \code{c(4, 7, 7, 7, 7, 7, 17)}.
-\item \code{sep_bw}: Integer vector of controlling the column widths of the output table when \code{output = "bw"}.
-Default is \code{c(4, rep(8,8))}.
-\item \code{WBATE}: Integer vector of weights for aggregated average treatment effect (WBATE). Should have non-negative entries
-summing up to one. If provided, an extra row for WBATE is added to the output table.
-\item \code{LBATE}: Logical. If \code{TRUE}, an extra row for largest treatment effect (LBATE) is added to the output table.
+\item \code{cbands}: Optional character vector requesting uniform
+confidence bands for displayed outputs. Options are \code{"main"},
+\code{"main.0"}, \code{"main.1"}, \code{"itt"}, \code{"itt.0"},
+\code{"itt.1"}, \code{"fs"}, \code{"fs.0"}, and \code{"fs.1"},
+subject to the sharp/fuzzy design and covariance matrices stored by
+\code{\link{rd2d}}.
+\item \code{WBATE}: Optional numeric weights for a weighted boundary
+average treatment effect row. The weights must match the full set of
+evaluation points for the selected output. The selected output must
+have a matching covariance matrix stored by \code{\link{rd2d}}.
+\item \code{LBATE}: Logical. If \code{TRUE}, prints a largest boundary
+average treatment effect row. The selected output must have a
+matching covariance matrix stored by \code{\link{rd2d}}.
+\item \code{subset}: Integer vector of indices of evaluation points to
+display. Aggregates and uniform-band critical values are still
+computed using all evaluation points. Defaults to all evaluation
+points.
+\item \code{output}: Character. Use \code{"main"} to display sharp or
+fuzzy main results; \code{"main.0"} or \code{"main.1"} to display
+sharp control- or treatment-side main results; \code{"itt"},
+\code{"itt.0"}, or \code{"itt.1"} to display fuzzy
+reduced-form or intention-to-treat results; \code{"fs"},
+\code{"fs.0"}, or \code{"fs.1"} to display fuzzy first-stage treatment receipt/status
+results; and
+\code{"bw"} to display bandwidth information. If omitted,
+\code{summary()} prints all default and requested estimate tables
+and does not print \code{"bw"}. Use \code{output = "bw"} to print
+bandwidth information.
+\item \code{sep}: Integer vector of length three. Controls spacing in
+the output.
+\code{sep[1]} controls spacing for the columns of bandwidths,
+estimation,
+t-statistic, and p-value in the \code{"main"} table.
+\code{sep[2]} controls spacing for the confidence interval
+(confidence bands)
+in the \code{"main"} table.
+\code{sep[3]} controls spacing for the columns in the
+\code{"bw"} table.
+Default is \code{c(7, 17, 8)}.
 }}
 }
 \value{
-No return value. This function is called for its side effects: it prints a formatted summary of \code{\link{rd2d}} results.
+Invisibly returns a list with displayed tables and uniform
+confidence bands requested through \code{cbands}. Each returned estimate
+table has the same columns as the corresponding \code{\link{rd2d}} output,
+with \code{cb.lower} and \code{cb.upper} added only when uniform bands are
+requested. Requested WBATE and LBATE rows are appended to the corresponding
+returned table.
 }
 \description{
-Summarizes estimation and bandwidth results from a 2D local polynomial regression discontinuity (RD) design, as produced by \code{\link{rd2d}}.
+Summarizes estimation and bandwidth results from a 2D local polynomial
+regression discontinuity (RD) design, as produced by \code{\link{rd2d}}.
 }
 \seealso{
-\code{\link{rd2d}} for estimation using 2D local polynomial RD design.
+\code{\link{rd2d}} for estimation using 2D local polynomial RD
+design.
 
 Supported methods: \code{\link{print.rd2d}}, \code{\link{summary.rd2d}}.
 }
 \author{
-Matias D. Cattaneo, Princeton University. \email{cattaneo@princeton.edu} \cr
-Rocío Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
-Ruiqi Rae Yu, Princeton University. \email{rae.yu@princeton.edu}
+Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
+Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 }

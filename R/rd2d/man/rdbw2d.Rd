@@ -2,12 +2,12 @@
 % Please edit documentation in R/rdbw2d.R
 \name{rdbw2d}
 \alias{rdbw2d}
-\title{Bandwidth Selection for 2D Local Polynomial RD Design}
+\title{Bandwidth Selection for Location-Based Methods for Boundary Discontinuity Design}
 \usage{
 rdbw2d(
   Y,
   X,
-  t,
+  assignment,
   b,
   p = 1,
   deriv = c(0, 0),
@@ -15,15 +15,18 @@ rdbw2d(
   kernel = c("tri", "triangular", "epa", "epanechnikov", "uni", "uniform", "gau",
     "gaussian"),
   kernel_type = c("prod", "rad"),
-  bwselect = c("mserd", "imserd", "msetwo", "imsetwo"),
+  bwselect = c("mserd", "cerrd", "imserd", "icerrd", "msetwo", "certwo", "imsetwo",
+    "icertwo"),
+  bwparam = c("main", "itt"),
   method = c("dpi", "rot"),
   vce = c("hc1", "hc0", "hc2", "hc3"),
-  bwcheck = 50 + p + 1,
+  bwcheck = 20,
   masspoints = c("check", "adjust", "off"),
-  C = NULL,
+  cluster = NULL,
   scaleregul = 1,
   scalebiascrct = 1,
-  stdvars = TRUE
+  stdvars = TRUE,
+  fuzzy = NULL
 )
 }
 \arguments{
@@ -31,28 +34,43 @@ rdbw2d(
 
 \item{X}{Bivariate running variable (a.k.a score variable); a numeric matrix or data frame of dimension \eqn{N \times 2}, with each row \eqn{\mathbf{X}_i = (X_{1i}, X_{2i})}.}
 
-\item{t}{Treatment indicator; a logical or binary vector indicating treatment assignment (\eqn{t_i = 1} if treated, \eqn{t_i = 0} otherwise).}
+\item{assignment}{Treatment assignment indicator; a logical or binary vector
+indicating assignment to the treated side.}
 
 \item{b}{Evaluation points; a matrix or data frame specifying boundary points \eqn{\mathbf{b}_j = (b_{1j}, b_{2j})}, of dimension \eqn{J \times 2}.}
 
-\item{p}{Polynomial order of local polynomial estimator.}
+\item{p}{Polynomial order of the local polynomial estimator. Default is
+\code{p = 1}.}
 
-\item{deriv}{The order of the derivatives of the regression functions to be estimated; a numeric vector of length 2 specifying the number of derivatives in each coordinate (e.g., \eqn{c(1,2)} corresponds to \eqn{\partial_1 \partial_2^2}).}
+\item{deriv}{The order of the derivatives of the regression functions to be estimated; a nonnegative integer vector of length 2 specifying the number of derivatives in each coordinate (e.g., \eqn{c(1,2)} corresponds to \eqn{\partial_1 \partial_2^2}).}
 
 \item{tangvec}{Tangent vectors; a matrix or data frame of dimension \eqn{J \times 2} specifying directional derivatives. Overrides \code{deriv} if provided.}
 
-\item{kernel}{Kernel function to use. Options are \code{"unif"}, \code{"uniform"} (uniform), \code{"triag"}, \code{"triangular"} (triangular, default), and \code{"epan"}, \code{"epanechnikov"} (Epanechnikov).}
+\item{kernel}{Kernel function to use. Options are \code{"tri"} or
+\code{"triangular"} (triangular, default), \code{"epa"} or
+\code{"epanechnikov"} (Epanechnikov), \code{"uni"} or \code{"uniform"}
+(uniform), and \code{"gau"} or \code{"gaussian"} (Gaussian).}
 
-\item{kernel_type}{Kernel structure. Either \code{"prod"} for product kernels (default) or \code{"rad"} for radial kernels.}
+\item{kernel_type}{Kernel structure. Either \code{"prod"} for product
+kernels (default) or \code{"rad"} for radial kernels.}
 
 \item{bwselect}{Bandwidth selection strategy. Options:
 \itemize{
 \item \code{"mserd"}. One common MSE-optimal bandwidth selector for the boundary RD treatment effect estimator for each evaluation point (default).
+\item \code{"cerrd"}. CER-optimal counterpart of \code{"mserd"}.
 \item \code{"imserd"}. IMSE-optimal bandwidth selector for the boundary RD treatment effect estimator based on all evaluation points.
+\item \code{"icerrd"}. CER-optimal counterpart of \code{"imserd"}.
 \item \code{"msetwo"}. Two different MSE-optimal bandwidth selectors (control and treatment) for the boundary RD treatment effect estimator for each evaluation point.
+\item \code{"certwo"}. CER-optimal counterpart of \code{"msetwo"}.
 \item \code{"imsetwo"}. Two IMSE-optimal bandwidth selectors (control and treatment) for the boundary RD treatment effect estimator based on all evaluation points.
-\item \code{"user provided"}. User-provided bandwidths. If \code{h} is not \code{NULL}, then \code{bwselect} is overwritten to \code{"user provided"}.
+\item \code{"icertwo"}. CER-optimal counterpart of \code{"imsetwo"}.
 }}
+
+\item{bwparam}{Target parameter used for fuzzy bandwidth selection.
+Options are \code{"main"} (default), which selects bandwidths for the
+linearized fuzzy Wald ratio, and \code{"itt"}, which selects bandwidths for
+the reduced-form outcome discontinuity. This option is ignored in sharp
+designs, where only \code{"main"} is used.}
 
 \item{method}{Bandwidth selection method for bias estimator based on local polynomials. Either \code{"dpi"} (default) for data-driven plug-in MSE optimal bandwidth selector or \code{"rot"} for rule-of-thumb bandwidth selector.}
 
@@ -62,9 +80,10 @@ rdbw2d(
 \item \code{"hc1"}: heteroskedasticity-robust plug-in residual variance estimator with HC1 small-sample adjustment (default).
 \item \code{"hc2"}: heteroskedasticity-robust plug-in residual variance estimator with HC2 adjustment.
 \item \code{"hc3"}: heteroskedasticity-robust plug-in residual variance estimator with HC3 adjustment.
-}}
+}
+Default is \code{"hc1"}.}
 
-\item{bwcheck}{If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} observations are used. If \code{masspoints == "adjust"}, ensure at least \code{bwcheck} unique observations are used. The program stops with “not enough observations” if sample size \eqn{N} < \code{bwcheck}. Default is \code{50 + p + 1}.}
+\item{bwcheck}{If a positive integer is provided, the preliminary bandwidth used in the calculations is enlarged so that at least \code{bwcheck} unique observations are used. Default is \code{20}.}
 
 \item{masspoints}{Handling of mass points in the running variable. Options are:
 \itemize{
@@ -73,13 +92,20 @@ rdbw2d(
 \item \code{"off"}: ignores presence of mass points.
 }}
 
-\item{C}{Cluster ID variable used for cluster-robust variance estimation. Default is \code{C = NULL}.}
+\item{cluster}{Cluster ID variable used for cluster-robust variance estimation with degrees-of-freedom weights. Default is \code{cluster = NULL}.}
 
-\item{scaleregul}{Scaling factor for the regularization term in bandwidth selection. Default is 3.}
+\item{scaleregul}{Scaling factor for the regularization term in bandwidth selection. Default is 1.}
 
 \item{scalebiascrct}{Scaling factor used for bias correction based on higher order expansions. Default is 1.}
 
-\item{stdvars}{Logical. If TRUE, the running variables \eqn{X_{1i}} and \eqn{X_{2i}} are standardized before computing the bandwidths. Default is \code{TRUE}. Standardization only affects automatic bandwidth selection if bandwidths are not manually provided via \code{h}.}
+\item{stdvars}{Logical. If \code{TRUE}, the running variables
+\eqn{X_{1i}} and \eqn{X_{2i}} are standardized before computing the
+bandwidths. Default is \code{TRUE}.}
+
+\item{fuzzy}{Optional treatment receipt/status variable used to construct
+bandwidth selectors for fuzzy RD estimation. If supplied, \code{bwparam}
+controls whether the selector targets the fuzzy Wald ratio or the
+reduced-form outcome discontinuity.}
 }
 \value{
 A list of class \code{"rdbw2d"} containing:
@@ -96,8 +122,8 @@ A list of class \code{"rdbw2d"} containing:
 }
 \item{\code{mseconsts}}{Data frame of intermediate quantities used in bandwidth calculation:
 \describe{
-\item{\code{Nh0}}{Effective sample size for the control group \eqn{\mathcal{A}_0}.}
-\item{\code{Nh1}}{Effective sample size for the treatment group \eqn{\mathcal{A}_1}.}
+\item{\code{N.Co}}{Effective sample size for the control group \eqn{\mathcal{A}_0}.}
+\item{\code{N.Tr}}{Effective sample size for the treatment group \eqn{\mathcal{A}_1}.}
 \item{\code{bias.0}}{Bias constant estimate for the control group.}
 \item{\code{bias.1}}{Bias constant estimate for the treatment group.}
 \item{\code{var.0}}{Variance constant estimate for the control group.}
@@ -115,6 +141,7 @@ A list of class \code{"rdbw2d"} containing:
 \item{\code{kernel_type}}{Type of kernel (product or radial).}
 \item{\code{stdvars}}{Logical indicating if standardization was applied.}
 \item{\code{bwselect}}{Bandwidth selection strategy used.}
+\item{\code{bwparam}}{Target parameter for fuzzy bandwidth selection.}
 \item{\code{method}}{Bandwidth estimation method.}
 \item{\code{vce}}{Variance estimation method.}
 \item{\code{scaleregul}}{Scaling factor for regularization.}
@@ -122,11 +149,14 @@ A list of class \code{"rdbw2d"} containing:
 \item{\code{N}}{Total sample size \eqn{N}.}
 }
 }
+\item{\code{call}}{Matched function call.}
 }
 }
 \description{
-\code{rdbw2d} implements bandwidth selector for bivariate local polynomial boundary regression discontinuity (RD) point estimators with robust bias-corrected pointwise confidence intervals and
-uniform confidence bands, developed in Cattaneo, Titiunik and Yu (2025a) with a companion software article Cattaneo, Titiunik and Yu (2025b). For robust bias-correction, see Calonico, Cattaneo, Titiunik (2014).
+\code{rdbw2d} implements bandwidth selectors for location-based local
+polynomial boundary discontinuity (BD) estimation and inference.
+See \href{https://arxiv.org/abs/2505.05670}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026)}
+for methodological background.
 
 Companion commands are: \code{rd2d} for point estimation and inference procedures.
 
@@ -136,36 +166,45 @@ For other packages of RD designs, visit
 \examples{
 # Simulated example
 set.seed(123)
-n <- 5000
+n <- 800
 X1 <- rnorm(n)
 X2 <- rnorm(n)
-t <- as.numeric(X1 > 0)
-Y <- 3 + 2 * X1 + 1.5 * X2 + t + rnorm(n)
+assignment <- as.numeric(X1 > 0)
+Y <- 3 + 2 * X1 + 1.5 * X2 + assignment + rnorm(n)
 X <- cbind(X1, X2)
 b <- matrix(c(0, 0, 0, 1), ncol = 2)
 
 # MSE optimal bandwidth for rd2d
-bws <- rdbw2d(Y, X, t, b)
+bws <- rdbw2d(Y, X, assignment, b, masspoints = "off", bwcheck = 10)
 
 # View the bandwidth selection results
 print(bws)
 summary(bws)
+
+# Fuzzy bandwidth selection can target the Wald ratio or the reduced form
+fuzzy <- as.numeric(runif(n) < ifelse(assignment == 1, 0.8, 0.2))
+Y.fuzzy <- 3 + 2 * X1 + 1.5 * X2 + 1.5 * fuzzy + rnorm(n)
+bws.fuzzy <- rdbw2d(Y.fuzzy, X, assignment, b, fuzzy = fuzzy, bwparam = "main",
+                    masspoints = "off", bwcheck = 10)
+print(bws.fuzzy)
 }
 \references{
 \itemize{
-\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_BoundaryRD.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025a).}
-Estimation and Inference in Boundary Discontinuity Designs}
-\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_rd2d.pdf}{Cattaneo, M. D., Titiunik, R., Yu, R. R. (2025b).}
-rd2d: Causal Inference in Boundary Discontinuity Designs}
-\item{\href{https://rdpackages.github.io/references/Calonico-Cattaneo-Titiunik_2014_ECMA.pdf}{Calonico, S., Cattaneo, M. D., Titiunik, R. (2014)}
-Robust Nonparametric Confidence Intervals for Regression-Discontinuity Designs}
+\item{Cattaneo, M. D., and Titiunik, R. (2022).
+Regression Discontinuity Designs. \doi{10.1146/annurev-economics-051520-021409}.}
+\item{\href{https://arxiv.org/abs/2505.05670}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026).}
+Estimation and Inference in Boundary Discontinuity Designs: Location-Based Methods.}
+\item{\href{https://arxiv.org/abs/2511.06474}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026).}
+Boundary Discontinuity Designs: Theory and Practice.}
+\item{\href{https://arxiv.org/abs/2505.07989}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2025).}
+rd2d: Causal Inference in Boundary Discontinuity Designs.}
 }
 }
 \seealso{
 \code{\link{rd2d}}, \code{\link{print.rdbw2d}}, \code{\link{summary.rdbw2d}}
 }
 \author{
-Matias D. Cattaneo, Princeton University. \email{cattaneo@princeton.edu} \cr
-Rocío Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
-Ruiqi Rae Yu, Princeton University. \email{rae.yu@princeton.edu}
+Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
+Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 }

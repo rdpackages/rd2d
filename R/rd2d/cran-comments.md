@@ -1,4 +1,4 @@
-# rd2d CRAN comments
+# rd2d 0.1.0 CRAN comments
 
 ## Test environments
 
@@ -7,4 +7,7 @@
 
 ## R CMD check results
 
-0 errors | 0 warnings | 0 notes
+0 errors | 0 warnings | 1 note
+
+The CRAN incoming feasibility note reports a maintainer change from
+Ruiqi Rae Yu to Matias D. Cattaneo. This change is intentional.
