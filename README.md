@@ -18,11 +18,13 @@ install.packages('rd2d')
 
 - Help: [R Manual](https://cran.r-project.org/web/packages/rd2d/rd2d.pdf), [CRAN repository](https://cran.r-project.org/package=rd2d).
 
-- Illustration: [Simulation and estimation](R/rd2d_illustration.R), [Plots](R/rd2d_plot.R). Generated illustration output is written to `R/output/` and is not tracked by git.
+- Illustration: [Simulation and estimation](R/rd2d_illustration.R), [Plots](R/rd2d_plot.R).
+
 
 ## References
 
 For overviews and introductions, see [rdpackages website](https://rdpackages.github.io).
+
 
 ### Software and Implementation
 
