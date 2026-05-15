@@ -1,19 +1,20 @@
-# Boundary Discontinuity Designs
+# Robust Local Polynomial Methods for BD Designs
 
-[![R-CMD-check](https://github.com/rdpackages/rd2d/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/rdpackages/rd2d/actions/workflows/R-CMD-check.yaml)
+The `rd2d` package implements pointwise and uniform estimation and inference for boundary discontinuity (BD) designs using local polynomial methods.
 
-The `rd2d` package provides R implementations of pointwise and uniform estimation and inference for Boundary Discontinuity Designs employing local polynomial methods.
-The main functions are `rd2d()` and `rdbw2d()` for location-based methods, and `rd2d.distance()` and `rdbw2d.distance()` for distance-based methods. Both approaches support sharp and fuzzy designs. The distance-based methods target the level of the boundary average treatment effect curve using bivariate scores reduced to signed distance-based running variables.
-Summary methods can also report weighted and largest boundary average treatment effects (WBATE and LBATE) when the fitted object stores the required covariance matrix, including intention-to-treat, first-stage, and fuzzy outputs.
+- `rd2d()`: estimation and inference using location-based methods.
+- `rdbw2d()`: bandwidth selection for location-based methods.
+- `rd2d.distance()`: estimation and inference using distance-based methods.
+- `rdbw2d.distance()`: bandwidth selection for distance-based methods.
 
 ## R Implementation
 
-To install/update in R type:
+To install/update in R, type:
 ```
 install.packages('rd2d')
 ```
 
-- Help: [R Manual](https://cran.r-project.org/web/packages/rd2d/rd2d.pdf), [CRAN repository](https://cran.r-project.org/package=rd2d).
+- Help: [R manual](https://cran.r-project.org/web/packages/rd2d/refman/rd2d.html), [CRAN repository](https://CRAN.R-project.org/package=rd2d).
 
 - Illustration: [Simulation and estimation](R/rd2d_illustration.R), [Plots](R/rd2d_plot.R).
 
