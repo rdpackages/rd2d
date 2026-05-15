@@ -2,10 +2,10 @@
 
 The `rd2d` package implements pointwise and uniform estimation and inference for boundary discontinuity (BD) designs using local polynomial methods.
 
-- `rd2d()`: estimation and inference using location-based methods.
-- `rdbw2d()`: bandwidth selection for location-based methods.
-- `rd2d.distance()`: estimation and inference using distance-based methods.
-- `rdbw2d.distance()`: bandwidth selection for distance-based methods.
+- `rd2d()`: point estimation and robust bias-corrected inference for sharp and fuzzy designs using location-based methods.
+- `rdbw2d()`: data-driven bandwidth selection for location-based methods.
+- `rd2d.distance()`: point estimation and robust bias-corrected inference for sharp and fuzzy designs using distance-based methods.
+- `rdbw2d.distance()`: data-driven bandwidth selection for distance-based methods.
 
 ## R Implementation
 
