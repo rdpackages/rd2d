@@ -19,7 +19,7 @@ Description: Provides pointwise and uniform estimation and inference methods for
     The companion software article is Cattaneo, Titiunik, and Yu (2025) <doi:10.48550/arXiv.2505.07989>.
 Imports: MASS, expm, ggplot2
 Suggests: testthat (>= 3.0.0)
-License: GPL-2
+License: GPL-3
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Maintainer: Matias D. Cattaneo <matias.d.cattaneo@gmail.com>

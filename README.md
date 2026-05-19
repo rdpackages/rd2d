@@ -7,6 +7,20 @@ The `rd2d` package implements pointwise and uniform estimation and inference for
 - `rd2d.distance`: point estimation and robust bias-corrected inference using distance-based methods.
 - `rdbw2d.distance`: data-driven bandwidth selection for distance-based methods.
 
+## Python Implementation
+
+The Python package lives in [`Python/rd2d`](Python/rd2d). It exposes
+`rd2d()`, `rdbw2d()`, `rd2d_dist()`/`rd2d_distance()`, and
+`rdbw2d_dist()`/`rdbw2d_distance()`.
+
+To install locally:
+```
+cd Python/rd2d
+python -m pip install -e .
+```
+
+- Illustration: [Simulation and estimation](Python/rd2d_illustration.py), [Plots](Python/rd2d_plot.py).
+
 ## R Implementation
 
 To install/update in R, type:

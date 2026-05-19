@@ -52,3 +52,23 @@ jobs:
 
       - name: Check R package
         run: R CMD check rd2d_*.tar.gz --no-manual
+
+  python-check:
+    name: Python package tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python package
+        run: python -m pip install -e "Python/rd2d[test,plots]"
+
+      - name: Test Python package
+        working-directory: Python/rd2d
+        run: python -m pytest
