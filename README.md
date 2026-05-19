@@ -9,7 +9,7 @@ The `rd2d` package implements pointwise and uniform estimation and inference for
 
 ## Python Implementation
 
-To install locally:
+To install from PyPI:
 ```
 pip install rd2d
 ```
@@ -29,7 +29,7 @@ install.packages('rd2d')
 
 ## Stata Implementation
 
-From Stata, install locally with:
+From Stata, install from GitHub with:
 ```
 net install rd2d, from(https://raw.githubusercontent.com/rdpackages/rd2d/main/stata) replace
 ```
