@@ -29,7 +29,7 @@
 #'
 #' @author
 #' Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com}.
-#' Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu}.
+#' Rocio Titiunik, Princeton University. \email{rocio.titiunik@gmail.com}.
 #' Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}.
 #'
 #' @references

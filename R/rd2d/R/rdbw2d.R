@@ -117,7 +117,7 @@
 #'
 #' @author
 #' Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
-#' Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+#' Rocio Titiunik, Princeton University. \email{rocio.titiunik@gmail.com} \cr
 #' Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 #'
 #' @references
@@ -590,7 +590,7 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
 #'
 #' @author
 #' Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
-#' Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+#' Rocio Titiunik, Princeton University. \email{rocio.titiunik@gmail.com} \cr
 #' Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 #'
 #' @seealso \code{\link{rdbw2d}} for bandwidth selection for 2D local polynomial RD design
@@ -638,7 +638,7 @@ print.rdbw2d <- function(x,...){
 #'
 #' @author
 #' Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
-#' Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+#' Rocio Titiunik, Princeton University. \email{rocio.titiunik@gmail.com} \cr
 #' Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 #'
 #' @seealso \code{\link{rdbw2d}} for bandwidth selection in 2D local polynomial RD design.

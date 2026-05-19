@@ -301,6 +301,6 @@ rd2d: Causal Inference in Boundary Discontinuity Designs.}
 }
 \author{
 Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
-Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+Rocio Titiunik, Princeton University. \email{rocio.titiunik@gmail.com} \cr
 Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 }

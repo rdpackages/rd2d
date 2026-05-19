@@ -158,7 +158,7 @@
 #'
 #' @author
 #' Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
-#' Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+#' Rocio Titiunik, Princeton University. \email{rocio.titiunik@gmail.com} \cr
 #' Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 #'
 #' @references
@@ -854,7 +854,7 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
 #'
 #' @author
 #' Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
-#' Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+#' Rocio Titiunik, Princeton University. \email{rocio.titiunik@gmail.com} \cr
 #' Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 #'
 #' @seealso
@@ -945,7 +945,7 @@ print.rd2d.distance <- function(x,...) {
 #'
 #' @author
 #' Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
-#' Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+#' Rocio Titiunik, Princeton University. \email{rocio.titiunik@gmail.com} \cr
 #' Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 #'
 #' @seealso \code{\link{rd2d.distance}} for estimation using distance-based 2D local polynomial RD design.

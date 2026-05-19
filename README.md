@@ -9,10 +9,6 @@ The `rd2d` package implements pointwise and uniform estimation and inference for
 
 ## Python Implementation
 
-The Python package lives in [`Python/rd2d`](Python/rd2d). It exposes
-`rd2d()`, `rdbw2d()`, `rd2d_dist()`/`rd2d_distance()`, and
-`rdbw2d_dist()`/`rdbw2d_distance()`.
-
 To install locally:
 ```
 cd Python/rd2d
@@ -31,6 +27,16 @@ install.packages('rd2d')
 - Help: [R manual](https://cran.r-project.org/web/packages/rd2d/refman/rd2d.html), [CRAN repository](https://CRAN.R-project.org/package=rd2d).
 
 - Illustration: [Simulation and estimation](R/rd2d_illustration.R), [Plots](R/rd2d_plot.R).
+
+## Stata Implementation
+
+From Stata, install locally with:
+```
+net install rd2d, from("stata") replace
+```
+
+- Illustration: [Location-based examples](stata/rd2d_illustration.do),
+  [distance-based examples](stata/rd2d_dist_illustration.do).
 
 
 ## References

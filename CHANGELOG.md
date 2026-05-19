@@ -2,6 +2,13 @@
 
 ## 2026-05-19
 
+### Stata Package Creation
+
+- Added the initial Stata package under `stata`, including location- and
+  distance-based commands, help files and generated PDFs, package metadata,
+  compiled Mata helpers, illustration do-files, and scripts for rebuilding
+  Stata help PDFs.
+
 ### Python Package Creation
 
 - Added the initial Python package under `Python/rd2d`, including package

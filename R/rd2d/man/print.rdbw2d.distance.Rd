@@ -24,6 +24,6 @@ Supported methods: \code{\link{print.rdbw2d.distance}}, \code{\link{summary.rdbw
 }
 \author{
 Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
-Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+Rocio Titiunik, Princeton University. \email{rocio.titiunik@gmail.com} \cr
 Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 }

@@ -89,7 +89,7 @@
 #'
 #' @author
 #' Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
-#' Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+#' Rocio Titiunik, Princeton University. \email{rocio.titiunik@gmail.com} \cr
 #' Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 #'
 #' @references
@@ -446,7 +446,7 @@ rdbw2d.distance <- function(Y, distance, b = NULL, p = 1,
 #'
 #' @author
 #' Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
-#' Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+#' Rocio Titiunik, Princeton University. \email{rocio.titiunik@gmail.com} \cr
 #' Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 #'
 #' @seealso \code{\link{rdbw2d.distance}} for distance-based bandwidth selection in 2D local polynomial RD design.
@@ -498,7 +498,7 @@ print.rdbw2d.distance <- function(x,...){
 #'
 #' @author
 #' Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
-#' Rocio Titiunik, Princeton University. \email{titiunik@princeton.edu} \cr
+#' Rocio Titiunik, Princeton University. \email{rocio.titiunik@gmail.com} \cr
 #' Ruiqi Rae Yu, Princeton University. \email{raeyuuuu@gmail.com}
 #'
 #' @seealso \code{\link{rdbw2d.distance}} for bandwidth selection using 2D local polynomial RD design with distance-based methods.

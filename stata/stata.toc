@@ -1,0 +1,5 @@
+v 3
+d RD2D: Robust Local Polynomial Methods for BD Designs.
+d       https://rdpackages.github.io/rd2d
+d
+p rd2d
