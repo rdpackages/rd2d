@@ -11,8 +11,7 @@ The `rd2d` package implements pointwise and uniform estimation and inference for
 
 To install locally:
 ```
-cd Python/rd2d
-python -m pip install -e .
+pip install rd2d
 ```
 
 - Illustration: [Simulation and estimation](Python/rd2d_illustration.py), [Plots](Python/rd2d_plot.py).
@@ -32,7 +31,7 @@ install.packages('rd2d')
 
 From Stata, install locally with:
 ```
-net install rd2d, from("stata") replace
+net install rd2d, from(https://raw.githubusercontent.com/rdpackages/rd2d/main/stata) replace
 ```
 
 - Illustration: [Location-based examples](stata/rd2d_illustration.do),
