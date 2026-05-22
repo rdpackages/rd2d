@@ -23,7 +23,7 @@ To install/update in R, type:
 install.packages('rd2d')
 ```
 
-- Help: [R manual](https://cran.r-project.org/web/packages/rd2d/refman/rd2d.html), [CRAN repository](https://CRAN.R-project.org/package=rd2d).
+- Help: [R manual](https://cran.r-project.org/web/packages/rd2d/rd2d.pdf), [CRAN repository](https://CRAN.R-project.org/package=rd2d).
 
 - Illustration: [Simulation and estimation](R/rd2d_illustration.R), [Plots](R/rd2d_plot.R).
 
