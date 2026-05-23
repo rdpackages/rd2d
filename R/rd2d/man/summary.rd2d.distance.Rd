@@ -16,6 +16,9 @@ display uniform confidence bands for the main distance-based estimates.
 Other stored outputs can be requested when their covariance matrices
 were stored through \code{params.cov}. The default displays pointwise
 confidence intervals.
+\item \code{repp}: Positive integer. Number of Gaussian simulation
+repetitions used for uniform confidence band and LBATE critical
+values. Default is \code{1000}.
 \item \code{WBATE}: Optional numeric weights for a weighted boundary
 average treatment effect row. The weights must match the full set of
 evaluation points and are normalized internally. The fitted object must
@@ -37,7 +40,8 @@ display requested side-specific companion estimates.
 \item \code{sep}: Integer vector of length three. Controls spacing in the output.
 \code{sep[1]} controls spacing for the columns of boundary points, estimation,
 t-value, and p-value in the \code{"main"} table.
-\code{sep[2]} controls spacing for confidence intervals (or bands) in the \code{"main"} table.
+\code{sep[2]} controls spacing for confidence intervals and
+confidence bands in the \code{"main"} table.
 \code{sep[3]} controls spacing for the columns in the \code{"bw"} table.
 Default is \code{c(7, 17, 8)}.
 }}
@@ -46,7 +50,9 @@ Default is \code{c(7, 17, 8)}.
 Invisibly returns an object of class \code{"summary.rd2d.distance"}, a
 list with elements:
 \itemize{
-\item \code{tables}: named list of returned summary tables.
+\item \code{tables}: named list of returned summary tables. Estimate
+tables retain pointwise confidence intervals and add \code{cb.lower}
+and \code{cb.upper} only when uniform bands are requested.
 \item \code{cbands}: named list of confidence-band endpoints for outputs
 requested through \code{cbands}.
 \item \code{outputs}: character vector of summarized outputs.

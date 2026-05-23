@@ -39,7 +39,7 @@ def test_location_exports_and_tables():
     bw = rdbw2d(y, x, z, b, masspoints="off")
     assert list(bw.bws.columns) == ["b1", "b2", "h01", "h02", "h11", "h12", "N.Co", "N.Tr"]
 
-    fit = rd2d(y, x, z, b, h=0.75, masspoints="off", params_cov="main", repp=49)
+    fit = rd2d(y, x, z, b, h=0.75, masspoints="off", params_cov="main")
     assert list(fit.main.columns) == [
         "b1",
         "b2",
@@ -59,9 +59,14 @@ def test_location_exports_and_tables():
         "N.Tr",
     ]
     assert fit.params_cov["main"].shape == (len(b), len(b))
-    summ = summary(fit, cbands="main", WBATE=np.ones(len(b)), LBATE=True)
+    assert "ci" in fit
+    assert "cb" not in fit
+    summ = summary(fit, cbands="main", repp=49, WBATE=np.ones(len(b)), LBATE=True)
     assert "main" in summ.tables
+    assert {"ci.lower", "ci.upper", "cb.lower", "cb.upper"}.issubset(summ.tables["main"].columns)
     assert list(summ.tables["main"].tail(2).index) == ["WBATE", "LBATE"]
+    with np.testing.assert_raises_regex(ValueError, "repp must be a positive integer"):
+        summary(fit, cbands="main", repp=0)
 
 
 def test_location_fuzzy_tables():
@@ -126,9 +131,11 @@ def test_distance_fuzzy_summary():
         cbands=True,
         params_cov=["itt", "fs"],
         masspoints="off",
-        repp=49,
     )
     assert isinstance(fit.itt, pd.DataFrame)
     assert isinstance(fit.fs, pd.DataFrame)
-    summ = fit.summary(cbands="main", WBATE=[1.0], LBATE=True)
+    summ = fit.summary(cbands="main", repp=49, WBATE=[1.0], LBATE=True)
+    assert "ci" in fit
+    assert "cb" not in fit
+    assert {"ci.lower", "ci.upper", "cb.lower", "cb.upper"}.issubset(summ.tables["main"].columns)
     assert list(summ.tables["main"].tail(2).index) == ["WBATE", "LBATE"]

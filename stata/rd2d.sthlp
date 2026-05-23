@@ -1,5 +1,5 @@
 {smcl}
-{* *!version 0.1.0  2026-05-19}{...}
+{* *!version 0.2.0  2026-05-23}{...}
 {viewerjumpto "Syntax" "rd2d##syntax"}{...}
 {viewerjumpto "Description" "rd2d##description"}{...}
 {viewerjumpto "Options" "rd2d##options"}{...}
@@ -132,17 +132,18 @@
 
 {p 4 8}Simulated sharp design{p_end}
 {p 8 8}{cmd:. clear}{p_end}
+{p 8 8}{cmd:. set type double}{p_end}
 {p 8 8}{cmd:. set obs 800}{p_end}
 {p 8 8}{cmd:. set seed 123}{p_end}
-{p 8 8}{cmd:. gen x1 = rnormal()}{p_end}
-{p 8 8}{cmd:. gen x2 = rnormal()}{p_end}
-{p 8 8}{cmd:. gen d = x1 >= 0}{p_end}
-{p 8 8}{cmd:. gen y = 3 + 2*x1 + 1.5*x2 + d + rnormal()}{p_end}
+{p 8 8}{cmd:. generate double x1 = rnormal()}{p_end}
+{p 8 8}{cmd:. generate double x2 = rnormal()}{p_end}
+{p 8 8}{cmd:. generate double d = x1 >= 0}{p_end}
+{p 8 8}{cmd:. generate double y = 3 + 2*x1 + 1.5*x2 + d + rnormal()}{p_end}
 {p 8 8}{cmd:. rd2d y x1 x2 d, b(0 0 0 1) h(.9) masspoints(off)}{p_end}
 
 {p 4 8}Fuzzy design{p_end}
-{p 8 8}{cmd:. gen takeup = runiform() < cond(d, .8, .2)}{p_end}
-{p 8 8}{cmd:. gen yf = 3 + 2*x1 + 1.5*x2 + 1.5*takeup + rnormal()}{p_end}
+{p 8 8}{cmd:. generate double takeup = runiform() < cond(d, .8, .2)}{p_end}
+{p 8 8}{cmd:. generate double yf = 3 + 2*x1 + 1.5*x2 + 1.5*takeup + rnormal()}{p_end}
 {p 8 8}{cmd:. rd2d yf x1 x2 d, b(0 0 0 1) h(.9) fuzzy(takeup)}{p_end}
 
 {marker stored_results}{...}

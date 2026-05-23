@@ -1,5 +1,5 @@
 {smcl}
-{* *!version 0.1.0  2026-05-19}{...}
+{* *!version 0.2.0  2026-05-23}{...}
 {viewerjumpto "Syntax" "rdbw2d_dist##syntax"}{...}
 {viewerjumpto "Description" "rdbw2d_dist##description"}{...}
 {viewerjumpto "Options" "rdbw2d_dist##options"}{...}
@@ -15,8 +15,10 @@
 
 {p 4 8}{cmd:rdbw2d_dist} {it:y distancevar [distancevar ...]} {ifin}
 [{cmd:,} {cmd:b(}{it:# # [# # ...]}{cmd:)}
+{cmd:fuzzy(}{it:varname}{cmd:)}
 {cmd:p(}{it:#}{cmd:)}
 {cmd:kinkunknown(}{it:on|off|#}{cmd:)}
+{cmd:kinkposition(}{it:# [# ...]}{cmd:)}
 {cmd:kernel(}{it:kernel}{cmd:)}
 {cmd:bwselect(}{it:selector}{cmd:)}
 {cmd:bwparam(}{it:target}{cmd:)}
@@ -42,6 +44,8 @@
 {p 4 8}{cmd:p()} sets the local polynomial order. Default is {cmd:p(1)}.{p_end}
 
 {p 4 8}{cmd:kinkunknown()} requests the unknown-kink bandwidth-rate adjustment. Use {cmd:on}, {cmd:off}, or a 0/1 indicator. For bandwidth selection, the first unknown-kink indicator is used.{p_end}
+
+{p 4 8}{cmd:kinkposition()} supplies known kink locations for adaptive automatic bandwidth selection. Provide 1-based boundary-point indices, or a 0/1 indicator with one value per distance variable. This option requires {cmd:b()} and cannot be combined with {cmd:kinkunknown()}.{p_end}
 
 {p 4 8}{cmd:kernel()} specifies the kernel function. Available choices are:{p_end}
 {p 8 12}{cmd:triangular} or {cmd:tri}: triangular kernel, the default.{p_end}
@@ -82,11 +86,12 @@
 {title:Examples}
 
 {p 8 8}{cmd:. clear}{p_end}
+{p 8 8}{cmd:. set type double}{p_end}
 {p 8 8}{cmd:. set obs 800}{p_end}
 {p 8 8}{cmd:. set seed 123}{p_end}
-{p 8 8}{cmd:. gen x = runiform()*2 - 1}{p_end}
-{p 8 8}{cmd:. gen d = x >= 0}{p_end}
-{p 8 8}{cmd:. gen y = 1 + 2*x + 1.5*d + rnormal()*.5}{p_end}
+{p 8 8}{cmd:. generate double x = runiform()*2 - 1}{p_end}
+{p 8 8}{cmd:. generate double d = x >= 0}{p_end}
+{p 8 8}{cmd:. generate double y = 1 + 2*x + 1.5*d + rnormal()*.5}{p_end}
 {p 8 8}{cmd:. rdbw2d_dist y x, b(0 0)}{p_end}
 
 {marker stored_results}{...}

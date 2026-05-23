@@ -44,8 +44,7 @@ test_that("sharp estimates are unchanged when automatic bandwidths are supplied 
       bwselect = scenario$bwselect,
       bwcheck = 8,
       params.other = c("main.0", "main.1"),
-      params.cov = c("main", "main.0", "main.1"),
-      repp = 19
+      params.cov = c("main", "main.0", "main.1")
     ))
     h <- as.matrix(auto$bw[, c("h01", "h02", "h11", "h12")])
     manual <- suppressWarnings(rd2d(
@@ -55,8 +54,7 @@ test_that("sharp estimates are unchanged when automatic bandwidths are supplied 
       kernel_type = scenario$kernel_type,
       bwcheck = 8,
       params.other = c("main.0", "main.1"),
-      params.cov = c("main", "main.0", "main.1"),
-      repp = 19
+      params.cov = c("main", "main.0", "main.1")
     ))
 
     expect_rd2d_tables_equal(auto, manual, c("main", "main.0", "main.1"))
@@ -83,8 +81,7 @@ test_that("fuzzy estimates are unchanged when automatic bandwidths are supplied 
       bwselect = scenario$bwselect,
       bwcheck = 8,
       params.other = c("itt.0", "itt.1", "fs.0", "fs.1"),
-      params.cov = c("main", "itt", "fs", "itt.0", "itt.1", "fs.0", "fs.1"),
-      repp = 19
+      params.cov = c("main", "itt", "fs", "itt.0", "itt.1", "fs.0", "fs.1")
     ))
     h <- as.matrix(auto$bw[, c("h01", "h02", "h11", "h12")])
     manual <- suppressWarnings(rd2d(
@@ -95,8 +92,7 @@ test_that("fuzzy estimates are unchanged when automatic bandwidths are supplied 
       kernel_type = scenario$kernel_type,
       bwcheck = 8,
       params.other = c("itt.0", "itt.1", "fs.0", "fs.1"),
-      params.cov = c("main", "itt", "fs", "itt.0", "itt.1", "fs.0", "fs.1"),
-      repp = 19
+      params.cov = c("main", "itt", "fs", "itt.0", "itt.1", "fs.0", "fs.1")
     ))
 
     expect_rd2d_tables_equal(

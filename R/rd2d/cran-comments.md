@@ -1,4 +1,4 @@
-# rd2d 0.1.0 CRAN comments
+# rd2d 0.2.0 CRAN comments
 
 ## Test environments
 
@@ -9,5 +9,5 @@
 
 0 errors | 0 warnings | 1 note
 
-The CRAN incoming feasibility note reports a maintainer change from
-Ruiqi Rae Yu to Matias D. Cattaneo. This change is intentional.
+The local NOTE reports that README.md and NEWS.md cannot be checked because
+pandoc is not installed on the local Windows machine.

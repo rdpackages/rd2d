@@ -33,7 +33,7 @@ make_location_data <- function(n = 500, seed = 101) {
 test_that("sharp rd2d returns pointwise tables without covariance by default", {
   dat <- make_location_data()
   fit <- rd2d(
-    dat$y, dat$x, dat$z, dat$b, h = 0.9, masspoints = "off", repp = 49
+    dat$y, dat$x, dat$z, dat$b, h = 0.9, masspoints = "off"
   )
 
   expect_s3_class(fit, "rd2d")
@@ -57,7 +57,7 @@ test_that("params.cov stores only requested sharp covariance matrices", {
   dat <- make_location_data()
   fit <- rd2d(
     dat$y, dat$x, dat$z, dat$b, h = 0.9, masspoints = "off",
-    params.other = "main.0", params.cov = c("main", "main.0"), repp = 49
+    params.other = "main.0", params.cov = c("main", "main.0")
   )
 
   expect_true(is.data.frame(fit$main.0))
@@ -76,7 +76,7 @@ test_that("fuzzy rd2d returns main, itt, fs, and requested one-sided outputs", {
   fit <- rd2d(
     dat$y.fuzzy, dat$x, dat$z, dat$b, h = 0.9, masspoints = "off",
     fuzzy = dat$fuzzy, params.other = c("itt.0", "fs.1"),
-    params.cov = c("main", "itt", "fs", "itt.0", "fs.1"), repp = 49
+    params.cov = c("main", "itt", "fs", "itt.0", "fs.1")
   )
 
   expect_true(is.data.frame(fit$main))
@@ -98,7 +98,7 @@ test_that("fuzzy rd2d automatic bandwidths use fuzzy rdbw2d selector", {
   )
   fit <- rd2d(
     dat$y.fuzzy, dat$x, dat$z, dat$b, fuzzy = dat$fuzzy,
-    masspoints = "off", bwcheck = 20, scaleregul = 3, repp = 19
+    masspoints = "off", bwcheck = 20, scaleregul = 3
   )
 
   expect_true(isTRUE(bw$opt$fuzzy))
@@ -158,7 +158,7 @@ test_that("fuzzy bwparam can select reduced-form bandwidth target", {
   )
   fit.itt <- rd2d(
     dat$y.fuzzy, dat$x, dat$z, dat$b, fuzzy = dat$fuzzy, bwparam = "itt",
-    masspoints = "off", bwcheck = 20, scaleregul = 3, repp = 19
+    masspoints = "off", bwcheck = 20, scaleregul = 3
   )
   sharp.ignored <- rdbw2d(
     dat$y, dat$x, dat$z, dat$b, bwparam = "itt",
@@ -185,7 +185,7 @@ test_that("stored clustered covariance diagonals match pointwise standard errors
   sharp <- suppressWarnings(rd2d(
     dat$y, dat$x, dat$z, dat$b, h = 0.9, cluster = cluster, vce = "hc1",
     masspoints = "off", params.other = c("main.0", "main.1"),
-    params.cov = c("main", "main.0", "main.1"), repp = 19
+    params.cov = c("main", "main.0", "main.1")
   ))
   for (output in c("main", "main.0", "main.1")) {
     expect_equal(
@@ -200,8 +200,7 @@ test_that("stored clustered covariance diagonals match pointwise standard errors
     dat$y.fuzzy, dat$x, dat$z, dat$b, h = 0.9, cluster = cluster, vce = "hc1",
     masspoints = "off", fuzzy = dat$fuzzy,
     params.other = c("itt.0", "itt.1", "fs.0", "fs.1"),
-    params.cov = c("main", "itt", "fs", "itt.0", "itt.1", "fs.0", "fs.1"),
-    repp = 19
+    params.cov = c("main", "itt", "fs", "itt.0", "itt.1", "fs.0", "fs.1")
   ))
   for (output in c("main", "itt", "fs", "itt.0", "itt.1", "fs.0", "fs.1")) {
     expect_equal(
@@ -222,8 +221,7 @@ test_that("combined clustered fuzzy covariance matches component calculations", 
     dat$y.fuzzy, dat$x, dat$z, dat$b, h = 0.9, cluster = cluster, vce = "hc1",
     masspoints = "off", fuzzy = dat$fuzzy,
     params.other = c("itt.0", "itt.1", "fs.0", "fs.1"),
-    params.cov = c("main", "itt", "fs", "itt.0", "itt.1", "fs.0", "fs.1"),
-    repp = 19
+    params.cov = c("main", "itt", "fs", "itt.0", "itt.1", "fs.0", "fs.1")
   ))
 
   q <- fit$opt$q
@@ -293,39 +291,55 @@ test_that("summary computes uniform bands lazily from stored covariance", {
   dat <- make_location_data()
   fit <- rd2d(
     dat$y, dat$x, dat$z, dat$b, h = 0.9, masspoints = "off",
-    params.cov = "main", repp = 49
+    params.cov = "main"
   )
 
   printed <- capture.output(
-    summ <- summary(fit, cbands = "main", WBATE = rep(1, 3), LBATE = TRUE)
+    summ <- summary(
+      fit, cbands = "main", WBATE = rep(1, 3), LBATE = TRUE, repp = 49
+    )
   )
 
   expect_s3_class(summ, "summary.rd2d")
+  expect_true(any(grepl("95% CI", printed)))
   expect_true(any(grepl("Unif. CB", printed)))
   expect_true(all(c("cb.lower", "cb.upper") %in% names(summ$tables$main)))
+  expect_true(all(c("ci.lower", "ci.upper") %in% names(summ$tables$main)))
   expect_equal(tail(rownames(summ$tables$main), 2), c("WBATE", "LBATE"))
   expect_true(all(is.finite(summ$tables$main[c("WBATE", "LBATE"), "ci.lower"])))
   expect_true(all(is.finite(summ$tables$main[c("WBATE", "LBATE"), "ci.upper"])))
   expect_true(all(is.na(summ$tables$main[c("WBATE", "LBATE"), "cb.lower"])))
   expect_true(all(is.na(summ$tables$main[c("WBATE", "LBATE"), "cb.upper"])))
   expect_false("aggregates" %in% names(summ))
+
+  first_estimate_pos <- function(line) {
+    regexpr("-?\\d+\\.\\d{4}", line)[[1]]
+  }
+  point.line <- printed[grepl("^\\s*1\\s+", printed)][1]
+  wbate.line <- printed[grepl("^WBATE\\s+", printed)][1]
+  lbate.line <- printed[grepl("^LBATE\\s+", printed)][1]
+  expect_equal(first_estimate_pos(wbate.line), first_estimate_pos(point.line))
+  expect_equal(first_estimate_pos(lbate.line), first_estimate_pos(point.line))
 })
 
 test_that("summary aggregates use all evaluation points when display is subset", {
   dat <- make_location_data()
   fit <- rd2d(
     dat$y, dat$x, dat$z, dat$b, h = 0.9, masspoints = "off",
-    params.cov = "main", repp = 49
+    params.cov = "main"
   )
 
   set.seed(20260507)
   capture.output(
-    summ.all <- summary(fit, WBATE = rep(1, nrow(fit$main)), LBATE = TRUE)
+    summ.all <- summary(
+      fit, WBATE = rep(1, nrow(fit$main)), LBATE = TRUE, repp = 49
+    )
   )
   set.seed(20260507)
   capture.output(
     summ.subset <- summary(
-      fit, WBATE = rep(1, nrow(fit$main)), LBATE = TRUE, subset = 1
+      fit, WBATE = rep(1, nrow(fit$main)), LBATE = TRUE, subset = 1,
+      repp = 49
     )
   )
 
@@ -344,7 +358,7 @@ test_that("summary WBATE uses pointwise Gaussian critical value", {
   dat <- make_location_data()
   fit <- rd2d(
     dat$y, dat$x, dat$z, dat$b, h = 0.9, masspoints = "off",
-    params.cov = "main", repp = 49
+    params.cov = "main"
   )
 
   capture.output(
@@ -352,7 +366,7 @@ test_that("summary WBATE uses pointwise Gaussian critical value", {
   )
   capture.output(
     summ.with.bands <- summary(
-      fit, cbands = "main", WBATE = rep(1, nrow(fit$main))
+      fit, cbands = "main", WBATE = rep(1, nrow(fit$main)), repp = 49
     )
   )
 
@@ -366,13 +380,15 @@ test_that("summary confidence bands use all evaluation points when display is su
   dat <- make_location_data()
   fit <- rd2d(
     dat$y, dat$x, dat$z, dat$b, h = 0.9, masspoints = "off",
-    params.cov = "main", repp = 49
+    params.cov = "main"
   )
 
   set.seed(20260507)
-  capture.output(summ.all <- summary(fit, cbands = "main"))
+  capture.output(summ.all <- summary(fit, cbands = "main", repp = 49))
   set.seed(20260507)
-  capture.output(summ.subset <- summary(fit, cbands = "main", subset = 1))
+  capture.output(
+    summ.subset <- summary(fit, cbands = "main", subset = 1, repp = 49)
+  )
 
   expect_equal(
     summ.subset$tables$main["1", c("cb.lower", "cb.upper")],
@@ -384,20 +400,21 @@ test_that("summary fuzzy aggregates use all evaluation points", {
   dat <- make_location_data()
   fit <- rd2d(
     dat$y.fuzzy, dat$x, dat$z, dat$b, h = 0.9, masspoints = "off",
-    fuzzy = dat$fuzzy, params.cov = "itt", repp = 49
+    fuzzy = dat$fuzzy, params.cov = "itt"
   )
 
   set.seed(20260507)
   capture.output(
     summ.all <- summary(
-      fit, output = "itt", WBATE = rep(1, nrow(fit$itt)), LBATE = TRUE
+      fit, output = "itt", WBATE = rep(1, nrow(fit$itt)), LBATE = TRUE,
+      repp = 49
     )
   )
   set.seed(20260507)
   capture.output(
     summ.subset <- summary(
       fit, output = "itt", WBATE = rep(1, nrow(fit$itt)), LBATE = TRUE,
-      subset = 1
+      subset = 1, repp = 49
     )
   )
 
@@ -414,12 +431,13 @@ test_that("summary fuzzy aggregates use all evaluation points", {
 test_that("summary errors clearly when requested inference lacks covariance", {
   dat <- make_location_data()
   fit <- rd2d(
-    dat$y, dat$x, dat$z, dat$b, h = 0.9, masspoints = "off", repp = 49
+    dat$y, dat$x, dat$z, dat$b, h = 0.9, masspoints = "off"
   )
 
   expect_error(capture.output(summary(fit, cbands = "main")), "params.cov")
   expect_error(capture.output(summary(fit, WBATE = rep(1, 3))), "params.cov")
   expect_error(capture.output(summary(fit, LBATE = TRUE)), "params.cov")
+  expect_error(summary(fit, repp = 0), "repp must be a positive integer")
   expect_error(capture.output(summary(fit, CBuniform = TRUE)), "Unsupported")
 })
 
@@ -433,7 +451,7 @@ test_that("second-order derivative estimates include multi-index factorials", {
   fit <- rd2d(
     y, as.matrix(grid), z, matrix(c(0, 0), ncol = 2),
     h = 2, deriv = c(2, 0), p = 2, q = 2, kernel = "uni",
-    vce = "hc0", masspoints = "off", repp = 19
+    vce = "hc0", masspoints = "off"
   )
 
   expect_equal(fit$main$estimate.p, 4, tolerance = 1e-8)
@@ -447,7 +465,7 @@ test_that("deriv must be a nonnegative integer multi-index", {
     expect_error(
       rd2d(
         dat$y, dat$x, dat$z, dat$b, h = 0.9, deriv = c(0.5, 0),
-        masspoints = "off", repp = 19
+        masspoints = "off"
       )
     ),
     "nonnegative integer"
@@ -504,7 +522,7 @@ test_that("polynomial orders must be nonnegative integers", {
     expect_error(
       rd2d(
         dat$y, dat$x, dat$z, dat$b, h = 0.9, p = 1.5,
-        masspoints = "off", repp = 19
+        masspoints = "off"
       )
     ),
     "p must be a nonnegative integer"
@@ -513,7 +531,7 @@ test_that("polynomial orders must be nonnegative integers", {
     expect_error(
       rd2d(
         dat$y, dat$x, dat$z, dat$b, h = 0.9, q = 1.5,
-        masspoints = "off", repp = 19
+        masspoints = "off"
       )
     ),
     "q must be a nonnegative integer"

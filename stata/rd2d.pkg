@@ -5,7 +5,7 @@ d Authors: Matias D. Cattaneo, Princeton University, matias.d.cattaneo@gmail.com
 d          Rocio Titiunik, Princeton University, rocio.titiunik@gmail.com
 d          Ruiqi Rae Yu, Princeton University, raeyuuuu@gmail.com
 d
-d Distribution-Date: 20260519
+d Distribution-Date: 20260523
 d
 f rd2d.ado
 f rd2d.sthlp
@@ -22,30 +22,5 @@ f rdbw2d_distance.sthlp
 f rd2d_functions.do
 f rd2d_illustration.do
 f rd2d_dist_illustration.do
-f rd2d_parse_numlist.mo
-f rd2d_fact.mo
-f rd2d_cer_factor.mo
-f rd2d_bwbase.mo
-f rd2d_is_cer.mo
-f rd2d_is_common.mo
-f rd2d_kernel.mo
-f rd2d_basis1.mo
-f rd2d_basis2.mo
-f rd2d_target2.mo
-f rd2d_target1.mo
-f rd2d_location_weights.mo
-f rd2d_distance_weights.mo
-f rd2d_local_fit.mo
-f rd2d_rot_location.mo
-f rd2d_rot_distance.mo
-f rd2d_kth_bounds.mo
-f rd2d_apply_location_bwcheck.mo
-f rd2d_location_bw_simple.mo
-f rd2d_fit_location_order.mo
-f rd2d_ci_table.mo
-f rd2d_location_stata.mo
-f rdbw2d_location_stata.mo
-f rd2d_distance_bw_simple.mo
-f rd2d_fit_distance_order.mo
-f rd2d_distance_stata.mo
-f rdbw2d_distance_stata.mo
+f rd2d_data.csv
+f lrd2d.mlib

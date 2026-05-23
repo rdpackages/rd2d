@@ -1,7 +1,10 @@
-# rd2d 0.1.0
+# rd2d 0.2.0
 
 - Adds fuzzy boundary RD support for both location-based and distance-based methods, including fuzzy main effects, ITT, first-stage, and optional one-sided outputs.
 - Adds `params.other` and `params.cov` controls to `rd2d()` for optional companion tables and covariance storage.
+- Moves the Gaussian simulation count `repp` from `rd2d()` and `rd2d.distance()` to the summary methods that use it for uniform confidence bands and LBATE critical values.
+- Reports pointwise CI columns and optional uniform CB columns separately in `summary.rd2d()` and `summary.rd2d.distance()`.
+- Speeds up location-based and distance-based fits by reducing repeated low-order basis, kernel, covariance projection, and masspoint-counting work.
 - Moves location-based uniform confidence band, WBATE, and LBATE construction to `summary.rd2d()`.
 - Adds distance-based WBATE and LBATE construction to `summary.rd2d.distance()`, including fuzzy main, ITT, and first-stage outputs.
 - Updates location-based return tables to use lowercase column names such as `estimate.p`, `std.err.q`, `t.value`, and `p.value`.

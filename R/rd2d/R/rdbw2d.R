@@ -391,17 +391,23 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
       dn.1     <- min(dn.1, bw.max.1)
     }
 
-    dat.bw <- dat.centered
+    side.0 <- dat.centered$d == FALSE
+    side.1 <- dat.centered$d == TRUE
+    dat.centered.0 <- dat.centered[side.0, , drop = FALSE]
+    dat.centered.1 <- dat.centered[side.1, , drop = FALSE]
+    cluster.0 <- cluster[side.0]
+    cluster.1 <- cluster[side.1]
+    dat.bw.0 <- dat.centered.0
+    dat.bw.1 <- dat.centered.1
+
     if (is.fuzzy && bwparam == "main") {
-      side.0 <- dat.centered$d == FALSE
-      side.1 <- dat.centered$d == TRUE
       fit.grad.0 <- rd2d_lm_multi(
-        dat.centered[side.0,], dn.0, p, vce, kernel, kernel_type,
-        cluster[side.0], varr = FALSE, outcomes = c("y", "fuzzy")
+        dat.centered.0, dn.0, p, vce, kernel, kernel_type,
+        cluster.0, varr = FALSE, outcomes = c("y", "fuzzy")
       )
       fit.grad.1 <- rd2d_lm_multi(
-        dat.centered[side.1,], dn.1, p, vce, kernel, kernel_type,
-        cluster[side.1], varr = FALSE, outcomes = c("y", "fuzzy")
+        dat.centered.1, dn.1, p, vce, kernel, kernel_type,
+        cluster.1, varr = FALSE, outcomes = c("y", "fuzzy")
       )
       tau.itt.grad <- (vec %*% fit.grad.1$beta[, "y", drop = FALSE] -
         vec %*% fit.grad.0$beta[, "y", drop = FALSE])[1,1]
@@ -411,7 +417,8 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
           abs(tau.fs.grad) > sqrt(.Machine$double.eps)) {
         grad.itt <- 1 / tau.fs.grad
         grad.fs <- -tau.itt.grad / tau.fs.grad^2
-        dat.bw$y <- grad.itt * dat.centered$y + grad.fs * dat.centered$fuzzy
+        dat.bw.0$y <- grad.itt * dat.centered.0$y + grad.fs * dat.centered.0$fuzzy
+        dat.bw.1$y <- grad.itt * dat.centered.1$y + grad.fs * dat.centered.1$fuzzy
       } else {
         warning(
           "Weak or zero first-stage fuzzy RD estimate detected in bandwidth selection; using reduced-form outcome bandwidth."
@@ -420,36 +427,36 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
     }
 
     if (kernel_type == "prod"){
-      w.0 <- kernel_weight(dat.centered[dat.centered$d == FALSE,]$x.1/dn.0, kernel) *
-             kernel_weight(dat.centered[dat.centered$d == FALSE,]$x.2/dn.0, kernel) / c(dn.0^2)
-      w.1 <- kernel_weight(dat.centered[dat.centered$d == TRUE,]$x.1/dn.1, kernel) *
-             kernel_weight(dat.centered[dat.centered$d == TRUE,]$x.2/dn.1, kernel) / c(dn.1^2)
+      w.0 <- kernel_weight(dat.centered.0$x.1/dn.0, kernel) *
+             kernel_weight(dat.centered.0$x.2/dn.0, kernel) / c(dn.0^2)
+      w.1 <- kernel_weight(dat.centered.1$x.1/dn.1, kernel) *
+             kernel_weight(dat.centered.1$x.2/dn.1, kernel) / c(dn.1^2)
     }
     else{
-      w.0   <- kernel_weight(dat.centered[dat.centered$d == FALSE,]$distance/dn.0, kernel)/c(dn.0^2)
-      w.1   <- kernel_weight(dat.centered[dat.centered$d == TRUE,]$distance/dn.1, kernel)/c(dn.1^2)
+      w.0   <- kernel_weight(dat.centered.0$distance/dn.0, kernel)/c(dn.0^2)
+      w.1   <- kernel_weight(dat.centered.1$distance/dn.1, kernel)/c(dn.1^2)
     }
 
     eN.0 <- sum(w.0 > 0)
     eN.1 <- sum(w.1 > 0)
 
-    vec.q.0 <- get_coeff(dat.centered[dat.centered$d == FALSE,], vec, p, dn.0, kernel, kernel_type)
-    vec.q.1 <- get_coeff(dat.centered[dat.centered$d == TRUE,], vec, p, dn.1, kernel, kernel_type)
+    vec.q.0 <- get_coeff(dat.centered.0, vec, p, dn.0, kernel, kernel_type)
+    vec.q.1 <- get_coeff(dat.centered.1, vec, p, dn.1, kernel, kernel_type)
 
     if (verbose) {print("Coefficients for a linear combination of (p+1)-th derivatives"); print(vec.q.0); print(vec.q.1)}
 
     # Bandwidth for fitting the linear combination of (p+1)-th derivatives using (p+1)-th degree model.
 
-    thrshd.0 <- median(dat.centered[dat.centered$d == FALSE,]$distance)
-    thrshd.1 <- median(dat.centered[dat.centered$d == TRUE,]$distance)
+    thrshd.0 <- median(dat.centered.0$distance)
+    thrshd.1 <- median(dat.centered.1$distance)
 
     bn.0 <- thrshd.0 # If method is "rot", use half of control data to estimate (p+1)th derivative of control.
     bn.1 <- thrshd.1 # If method is "rot", use half of treated data to estimate (p+1)th derivative of treated.
 
     if (method == "dpi"){
 
-      bn.const.0 <- rdbw2d_bw_v2(dat.bw[dat.bw$d == FALSE,], p + 1, vec.q.0, dn.0, thrshd.0, NULL, vce, kernel, kernel_type, cluster[as.logical(dat.bw$d == FALSE)])
-      bn.const.1 <- rdbw2d_bw_v2(dat.bw[dat.bw$d == TRUE,], p + 1, vec.q.1, dn.1, thrshd.1, NULL, vce, kernel, kernel_type,cluster[as.logical(dat.bw$d == TRUE)])
+      bn.const.0 <- rdbw2d_bw_v2(dat.bw.0, p + 1, vec.q.0, dn.0, thrshd.0, NULL, vce, kernel, kernel_type, cluster.0)
+      bn.const.1 <- rdbw2d_bw_v2(dat.bw.1, p + 1, vec.q.1, dn.1, thrshd.1, NULL, vce, kernel, kernel_type, cluster.1)
 
       bn.0 <-  ((2 + 2 * (p+1)) * bn.const.0$V  / ( (2 * (p + 1) + 2 - 2 * (p+1)) * (bn.const.0$B^2 + scaleregul * bn.const.0$Reg.1) ) )^(1/(2 * p + 6))
       bn.1 <-  ((2 + 2 * (p+1)) * bn.const.1$V  / ( (2 * (p + 1) + 2 - 2 * (p+1)) * (bn.const.1$B^2 + scaleregul * bn.const.1$Reg.1) ) )^(1/(2 * p + 6))
@@ -470,8 +477,8 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
 
     if (bwselect.base == "mserd" | bwselect.base == "imserd"){
 
-      hn.const.0 <- rdbw2d_bw_v2(dat.bw[dat.bw$d == FALSE,], p, vec, dn.0, bn.0, thrshd.0, vce, kernel, kernel_type, cluster[as.logical(dat.bw$d == FALSE)])
-      hn.const.1 <- rdbw2d_bw_v2(dat.bw[dat.bw$d == TRUE,], p, vec, dn.1, bn.1, thrshd.1, vce, kernel, kernel_type, cluster[as.logical(dat.bw$d == TRUE)])
+      hn.const.0 <- rdbw2d_bw_v2(dat.bw.0, p, vec, dn.0, bn.0, thrshd.0, vce, kernel, kernel_type, cluster.0)
+      hn.const.1 <- rdbw2d_bw_v2(dat.bw.1, p, vec, dn.1, bn.1, thrshd.1, vce, kernel, kernel_type, cluster.1)
 
       hn <- ( (2 + 2 * deriv.sum) * (hn.const.0$V   + hn.const.1$V) /
                 ( (2 * p + 2 - 2 * deriv.sum) * ( (hn.const.0$B + scalebiascrct * hn.const.0$Reg.2 - hn.const.1$B - scalebiascrct * hn.const.1$Reg.2)^2 +
@@ -487,8 +494,8 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
 
     if (bwselect.base == "msetwo" | bwselect.base == "imsetwo"){
 
-      hn.const.0 <- rdbw2d_bw_v2(dat.bw[dat.bw$d == FALSE,], p, vec, dn.0, bn.0, thrshd.0, vce, kernel, kernel_type, cluster[as.logical(dat.bw$d == FALSE)])
-      hn.const.1 <- rdbw2d_bw_v2(dat.bw[dat.bw$d == TRUE,], p, vec, dn.1, bn.1, thrshd.1, vce, kernel, kernel_type, cluster[as.logical(dat.bw$d == TRUE)])
+      hn.const.0 <- rdbw2d_bw_v2(dat.bw.0, p, vec, dn.0, bn.0, thrshd.0, vce, kernel, kernel_type, cluster.0)
+      hn.const.1 <- rdbw2d_bw_v2(dat.bw.1, p, vec, dn.1, bn.1, thrshd.1, vce, kernel, kernel_type, cluster.1)
 
       hn.0 <- ( (2 + 2 * deriv.sum) * hn.const.0$V /
                 ( deriv.denom * ( (hn.const.0$B + scalebiascrct * hn.const.0$Reg.2)^2 + scaleregul * hn.const.0$Reg.1) ) )^(1/(2 * p + 4))

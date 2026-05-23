@@ -151,16 +151,18 @@ rd2d_distance_to_known_kink <- function(eval, kink.position) {
 ########################### Weight Calculation #################################
 
 kernel_weight = function(u,kernel){
-  kernel.type <- "Epanechnikov"
-  if (kernel=="triangular"   | kernel=="tri") kernel.type <- "Triangular"
-  if (kernel=="uniform"      | kernel=="uni") kernel.type <- "Uniform"
-  if (kernel=="gaussian"     | kernel=="gau") kernel.type <- "Gaussian"
-
-  if (kernel.type=="Epanechnikov") w = 0.75*(1-u^2)*(abs(u)<=1)
-  if (kernel.type=="Uniform")      w =          0.5*(abs(u)<=1)
-  if (kernel.type=="Triangular")   w =   (1-abs(u))*(abs(u)<=1)
-  if (kernel.type=="Gaussian")     w =   dnorm(u)
-  return(w)
+  kernel <- tolower(kernel)
+  abs.u <- abs(u)
+  if (kernel == "triangular" || kernel == "tri") {
+    return((1 - abs.u) * (abs.u <= 1))
+  }
+  if (kernel == "uniform" || kernel == "uni") {
+    return(0.5 * (abs.u <= 1))
+  }
+  if (kernel == "gaussian" || kernel == "gau") {
+    return(dnorm(u))
+  }
+  0.75 * (1 - u^2) * (abs.u <= 1)
 }
 
 ##################### Rule of Thumb Bandwidth Selection ########################
@@ -1307,7 +1309,14 @@ rd2d_local_design <- function(dat, h, p, kernel, kernel_type, cluster = NULL,
                               outcomes = "y") {
   h <- rd2d_h_normalize(h, kernel_type)
   h.xy <- rd2d_hxy(h)
-  w <- rd2d_kernel_weights(dat, h, kernel, kernel_type)
+  x.1 <- dat$x.1
+  x.2 <- dat$x.2
+  if (kernel_type == "prod") {
+    w <- kernel_weight(x.1 / h[1], kernel) *
+      kernel_weight(x.2 / h[2], kernel) / (h[1] * h[2])
+  } else {
+    w <- kernel_weight(dat$distance / h, kernel) / h^2
+  }
   ind <- as.logical(w > 0)
   ew <- w[ind]
   sqrt.ew <- sqrt(ew)
@@ -1320,8 +1329,7 @@ rd2d_local_design <- function(dat, h, p, kernel, kernel_type, cluster = NULL,
   }
   eC <- cluster[ind]
 
-  eu <- cbind(dat$x.1[ind] / h.xy[1], dat$x.2[ind] / h.xy[2])
-  eR <- get_basis(eu, p)
+  eR <- get_basis_xy(x.1[ind] / h.xy[1], x.2[ind] / h.xy[2], p)
   sqrtw_R <- sqrt.ew * eR
   w_R <- ew * eR
   invG <- qrXXinv(sqrtw_R)
@@ -1648,6 +1656,14 @@ rd2d_row_max <- function(x) {
   x[cbind(seq_len(nrow(x)), max.col(x, ties.method = "first"))]
 }
 
+rd2d_validate_repp <- function(repp) {
+  if (!is.numeric(repp) || length(repp) != 1 || !is.finite(repp) ||
+      repp < 1 || repp != as.integer(repp)) {
+    stop("repp must be a positive integer", call. = FALSE)
+  }
+  as.integer(repp)
+}
+
 rd2d_cval <- function(cov, rep, side="two", alpha, lp=Inf) {
   tvec <- c()
 
@@ -1744,25 +1760,39 @@ rd2d_cb <- function(mu.hat, cov.us, rep, side, alpha){
 
 ############################# Get Basis ########################################
 
-get_basis <- function(u,p){
-  u.x.1 <- u[,1]
-  u.x.2 <- u[,2]
+get_basis_xy <- function(u.x.1, u.x.2, p) {
+  n <- length(u.x.1)
+  if (p == 0) return(matrix(1, nrow = n, ncol = 1))
+  if (p == 1) return(cbind(1, u.x.1, u.x.2))
+  if (p == 2) {
+    return(cbind(1, u.x.1, u.x.2, u.x.1^2, u.x.1 * u.x.2, u.x.2^2))
+  }
+  if (p == 3) {
+    return(cbind(
+      1, u.x.1, u.x.2,
+      u.x.1^2, u.x.1 * u.x.2, u.x.2^2,
+      u.x.1^3, u.x.1^2 * u.x.2, u.x.1 * u.x.2^2, u.x.2^3
+    ))
+  }
+
   result <- matrix(
-    NA,
-    nrow = dim(u)[1],
+    NA_real_,
+    nrow = n,
     ncol = factorial(p+2)/(factorial(p) * 2)
   )
-  result[,1] <- rep(1, dim(u)[1])
+  result[,1] <- 1
   count <- 2
-  if (p >= 1){
-    for (j in 1:p){
-      for (k in 0:j){
-        result[,count] <- u.x.1^(j-k) * u.x.2^k
-        count <- count + 1
-      }
+  for (j in 1:p){
+    for (k in 0:j){
+      result[,count] <- u.x.1^(j-k) * u.x.2^k
+      count <- count + 1
     }
   }
-  return(result)
+  result
+}
+
+get_basis <- function(u,p){
+  get_basis_xy(u[,1], u[,2], p)
 }
 
 ############################### Get H ##########################################

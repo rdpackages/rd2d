@@ -89,8 +89,6 @@
 #' matrices.
 #' @param side Type of confidence interval. Options: \code{"two"} (two-sided,
 #' default), \code{"left"} (left tail), or \code{"right"} (right tail).
-#' @param repp Number of repetitions for critical value simulation (used in
-#' uniform confidence bands). Default is 1000.
 #' @param bwselect Bandwidth selection strategy. Options:
 #' \itemize{
 #' \item \code{"mserd"}. One common MSE-optimal bandwidth selector for the
@@ -179,7 +177,7 @@
 #'   \item{\code{params.cov}}{List of covariance matrices for aggregate
 #'   inference in \code{\link{summary.rd2d}}. Contains only entries requested
 #'   through \code{params.cov}.}
-#'   \item{\code{cb}}{List with pointwise confidence intervals.}
+#'   \item{\code{ci}}{List with pointwise confidence intervals.}
 #'   \item{\code{pvalues}}{Two-sided p-values based on bias-corrected
 #'   estimates.}
 #'   \item{\code{tvalues}}{t-statistics based on bias-corrected estimates.}
@@ -227,16 +225,16 @@
 #'
 #' # Estimate treatment effect using rd2d
 #' result <- rd2d(Y, X, assignment, b, params.cov = "main",
-#'                masspoints = "off", bwcheck = 10, repp = 49)
+#'                masspoints = "off", bwcheck = 10)
 #' print(result)
-#' summary(result, cbands = "main")
+#' summary(result, cbands = "main", repp = 49)
 #'
 #' # Fuzzy RD example
 #' fuzzy <- as.numeric(runif(n) < ifelse(assignment == 1, 0.8, 0.2))
 #' Y.fuzzy <- 3 + 2 * X1 + 1.5 * X2 + 1.5 * fuzzy + rnorm(n)
 #' result.fuzzy <- rd2d(Y.fuzzy, X, assignment, b, fuzzy = fuzzy,
 #'                      bwparam = "main", masspoints = "off",
-#'                      bwcheck = 10, repp = 49)
+#'                      bwcheck = 10)
 #' print(result.fuzzy)
 #' summary(result.fuzzy, output = "itt")
 #' @export
@@ -248,7 +246,7 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
                  vce = c("hc1","hc0","hc2","hc3"),
                  masspoints = c("check", "adjust", "off"),cluster = NULL,
                  level = 95, params.other = NULL, params.cov = NULL,
-                 side = c("two", "left", "right"), repp = 1000,
+                 side = c("two", "left", "right"),
                  bwselect = c("mserd", "cerrd", "imserd", "icerrd",
                               "msetwo", "certwo", "imsetwo", "icertwo",
                               "user provided"),
@@ -505,12 +503,6 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
   # level must be numeric in (0, 100)
   if (!is.numeric(level) || level <= 0 || level >= 100) {
     print("level must be a numeric value between 0 and 100")
-    exit <- 1
-  }
-
-  # repp must be a positive integer
-  if (!is.numeric(repp) || repp < 1 || repp != as.integer(repp)) {
-    print("repp must be a positive integer")
     exit <- 1
   }
 
@@ -911,7 +903,7 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
     }
   }
 
-  cb.hat.q <- list(CI.l = CI.lower, CI.r = CI.upper)
+  ci.hat.q <- list(CI.l = CI.lower, CI.r = CI.upper)
 
   clustered <- !is.null(cluster)
 
@@ -1100,7 +1092,7 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
         vce = vce, bwcheck = bwcheck,
         masspoints = masspoints, cluster = cluster, clustered = clustered,
         scaleregul = scaleregul, scalebiascrct = scalebiascrct,
-        stdvars = stdvars, fuzzy = is.fuzzy, level = level, repp = repp,
+        stdvars = stdvars, fuzzy = is.fuzzy, level = level,
         side = side, params.other = params.other, params.cov = params.cov,
         h01 = hgrid[,1], h02 = hgrid[,2],
         h11 = hgrid.1[,1], h12 = hgrid.1[,2],
@@ -1111,7 +1103,7 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
       se.hat = se.hat.p,
       se.hat.q = se.hat.q,
       params.cov = cov.tables,
-      cb = cb.hat.q,
+      ci = ci.hat.q,
       pvalues = pvalues,
       tvalues = tvalues,
       tau.itt = tau.itt.p,
@@ -1220,6 +1212,9 @@ print.rd2d <- function(x,...) {
 #'       \code{"itt.1"}, \code{"fs"}, \code{"fs.0"}, and \code{"fs.1"},
 #'       subject to the sharp/fuzzy design and covariance matrices stored by
 #'       \code{\link{rd2d}}.
+#'     \item \code{repp}: Positive integer. Number of Gaussian simulation
+#'       repetitions used for uniform confidence band and LBATE critical
+#'       values. Default is \code{1000}.
 #'     \item \code{WBATE}: Optional numeric weights for a weighted boundary
 #'       average treatment effect row. The weights must match the full set of
 #'       evaluation points for the selected output. The selected output must
@@ -1247,8 +1242,8 @@ print.rd2d <- function(x,...) {
 #'       \code{sep[1]} controls spacing for the columns of bandwidths,
 #'       estimation,
 #'       t-statistic, and p-value in the \code{"main"} table.
-#'       \code{sep[2]} controls spacing for the confidence interval
-#'       (confidence bands)
+#'       \code{sep[2]} controls spacing for confidence intervals and
+#'       confidence bands
 #'       in the \code{"main"} table.
 #'       \code{sep[3]} controls spacing for the columns in the
 #'       \code{"bw"} table.
@@ -1258,9 +1253,9 @@ print.rd2d <- function(x,...) {
 #' @return Invisibly returns a list with displayed tables and uniform
 #' confidence bands requested through \code{cbands}. Each returned estimate
 #' table has the same columns as the corresponding \code{\link{rd2d}} output,
-#' with \code{cb.lower} and \code{cb.upper} added only when uniform bands are
-#' requested. Requested WBATE and LBATE rows are appended to the corresponding
-#' returned table.
+#' with pointwise confidence intervals always retained and \code{cb.lower} and
+#' \code{cb.upper} added only when uniform bands are requested. Requested WBATE
+#' and LBATE rows are appended to the corresponding returned table.
 #'
 #' @author
 #' Matias D. Cattaneo, Princeton University. \email{matias.d.cattaneo@gmail.com} \cr
@@ -1279,7 +1274,9 @@ summary.rd2d <- function(object, ...) {
   x <- object
 
   args <- list(...)
-  valid.summary.args <- c("cbands", "WBATE", "LBATE", "subset", "output", "sep")
+  valid.summary.args <- c(
+    "cbands", "repp", "WBATE", "LBATE", "subset", "output", "sep"
+  )
   arg.names <- names(args)
   if (length(args) > 0 && (is.null(arg.names) || any(arg.names == ""))) {
     stop("All summary.rd2d options must be named.", call. = FALSE)
@@ -1306,6 +1303,8 @@ summary.rd2d <- function(object, ...) {
   }
   WBATE <- args[['WBATE']]
   LBATE <- isTRUE(args[['LBATE']])
+  repp <- if (is.null(args[["repp"]])) 1000 else args[["repp"]]
+  repp <- rd2d_validate_repp(repp)
 
   if (is.null(args[['subset']])) {
     subset <- NULL
@@ -1445,11 +1444,19 @@ summary.rd2d <- function(object, ...) {
       sprintf("%d%% CI", x$opt$level)
     )
     if (bands.requested){
-      headers[length(headers)] <- sprintf("%d%% Unif. CB", x$opt$level)
+      headers <- c(headers, sprintf("%d%% Unif. CB", x$opt$level))
     }
 
-    col_widths <- pmax(c(4, sep[1], sep[1], sep[1], sep[1], sep[1], sep[2]),
-                       nchar(headers))
+    col_widths <- pmax(
+      c(
+        4, sep[1], sep[1], sep[1], sep[1], sep[1], sep[2],
+        if (bands.requested) sep[2]
+      ),
+      nchar(headers)
+    )
+    if (!is.null(WBATE) || LBATE) {
+      col_widths[1] <- max(col_widths[1], nchar(c("WBATE", "LBATE")))
+    }
 
     # Format and print header row
     rule.width <- sum(col_widths) + 2 * (length(headers) - 1)
@@ -1553,18 +1560,18 @@ summary.rd2d <- function(object, ...) {
     if (!is.null(WBATE)) require_covariance("WBATE inference")
     if (LBATE) require_covariance("LBATE inference")
 
-    interval.lower <- results$ci.lower
-    interval.upper <- results$ci.upper
     cbands.return <- NULL
+    cb.lower <- NULL
+    cb.upper <- NULL
     if (bands.requested) {
       cb.out <- rd2d_cb(
-        results[["estimate.q"]], cov.table, x$opt$repp, summary.side,
+        results[["estimate.q"]], cov.table, repp, summary.side,
         x$opt$level
       )
-      interval.lower <- cb.out$CB.l
-      interval.upper <- cb.out$CB.r
-      result.subset$cb.lower <- cb.out$CB.l[subset]
-      result.subset$cb.upper <- cb.out$CB.r[subset]
+      cb.lower <- cb.out$CB.l
+      cb.upper <- cb.out$CB.r
+      result.subset$cb.lower <- cb.lower[subset]
+      result.subset$cb.upper <- cb.upper[subset]
       cbands.return <- result.subset[, c("cb.lower", "cb.upper"), drop = FALSE]
     }
 
@@ -1580,6 +1587,9 @@ summary.rd2d <- function(object, ...) {
         format_number(p.value, col_widths[6]),
         format_interval(lower, upper, col_widths[7])
       )
+      if (bands.requested) {
+        row_vals <- c(row_vals, format_blank(col_widths[8]))
+      }
       cat(paste(row_vals, collapse = "  "), "\n")
     }
 
@@ -1636,7 +1646,7 @@ summary.rd2d <- function(object, ...) {
       if (covariance_available(cov.mat, nrow(result.all)) &&
           all(is.finite(result.all[["estimate.q"]]))) {
         se <- sqrt(diag(cov.mat))
-        cval <- rd2d_cval(cov.mat, rep = x$opt$repp, side = summary.side,
+        cval <- rd2d_cval(cov.mat, rep = repp, side = summary.side,
                           alpha = x$opt$level, lp = Inf)
         if (summary.side == "two") {
           out$lower <- max(result.all[["estimate.q"]] - cval * se)
@@ -1703,8 +1713,8 @@ summary.rd2d <- function(object, ...) {
         )
       )
 
-      ci.lower <- interval.lower[i]
-      ci.upper <- interval.upper[i]
+      ci.lower <- results$ci.lower[i]
+      ci.upper <- results$ci.upper[i]
       ci_formatted <- ifelse(
         is.na(ci.lower) | is.na(ci.upper),
         formatC("NA", width = col_widths[7], format = "s"),
@@ -1720,8 +1730,6 @@ summary.rd2d <- function(object, ...) {
           format = "s"
         )
       )
-
-      # Print
       row_vals <- c(
         index_formatted,
         b1_formatted,
@@ -1731,6 +1739,26 @@ summary.rd2d <- function(object, ...) {
         pvalues_formatted,
         ci_formatted
       )
+      if (bands.requested) {
+        cb_formatted <- ifelse(
+          is.na(cb.lower[i]) | is.na(cb.upper[i]),
+          formatC("NA", width = col_widths[8], format = "s"),
+          formatC(
+            paste0(
+              "[",
+              formatC(cb.lower[i], format = "f", digits = 4),
+              ", ",
+              formatC(cb.upper[i], format = "f", digits = 4),
+              "]"
+            ),
+            width = col_widths[8],
+            format = "s"
+          )
+        )
+        row_vals <- c(row_vals, cb_formatted)
+      }
+
+      # Print
       if (i %in% subset) cat(paste(row_vals, collapse = "  "), "\n")
     }
 

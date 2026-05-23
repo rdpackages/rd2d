@@ -1,5 +1,5 @@
 {smcl}
-{* *!version 0.1.0  2026-05-19}{...}
+{* *!version 0.2.0  2026-05-23}{...}
 {viewerjumpto "Syntax" "rd2d_dist##syntax"}{...}
 {viewerjumpto "Description" "rd2d_dist##description"}{...}
 {viewerjumpto "Options" "rd2d_dist##options"}{...}
@@ -20,6 +20,7 @@
 {cmd:p(}{it:#}{cmd:)}
 {cmd:q(}{it:#}{cmd:)}
 {cmd:kinkunknown(}{it:on|off|# #}{cmd:)}
+{cmd:kinkposition(}{it:# [# ...]}{cmd:)}
 {cmd:kernel(}{it:kernel}{cmd:)}
 {cmd:level(}{it:#}{cmd:)}
 {cmd:side(}{it:side}{cmd:)}
@@ -55,6 +56,8 @@
 {p 4 8}{cmd:p()} and {cmd:q()} set the local polynomial orders for point estimation and bias-corrected inference. Defaults are {cmd:p(1)} and {cmd:q(p+1)} unless unknown-kink inference is requested, in which case the default inference order follows the unknown-kink setting.{p_end}
 
 {p 4 8}{cmd:kinkunknown()} controls unknown-kink bandwidth-rate adjustments. Use {cmd:on} to apply both point-estimation and inference adjustments, {cmd:off} to apply neither adjustment, or two 0/1 indicators where the first controls point-estimation bandwidths and the second controls inference bandwidths. The second indicator can be 1 only when the first is 1.{p_end}
+
+{p 4 8}{cmd:kinkposition()} supplies known kink locations for adaptive automatic bandwidth selection. Provide 1-based boundary-point indices, or a 0/1 indicator with one value per distance variable. This option requires {cmd:b()}, applies only when {cmd:h()} is omitted, and cannot be combined with {cmd:kinkunknown()}.{p_end}
 
 {p 4 8}{cmd:kernel()} specifies the kernel function. Available choices are:{p_end}
 {p 8 12}{cmd:triangular} or {cmd:tri}: triangular kernel, the default.{p_end}
@@ -111,11 +114,12 @@
 {title:Examples}
 
 {p 8 8}{cmd:. clear}{p_end}
+{p 8 8}{cmd:. set type double}{p_end}
 {p 8 8}{cmd:. set obs 800}{p_end}
 {p 8 8}{cmd:. set seed 123}{p_end}
-{p 8 8}{cmd:. gen x = runiform()*2 - 1}{p_end}
-{p 8 8}{cmd:. gen d = x >= 0}{p_end}
-{p 8 8}{cmd:. gen y = 1 + 2*x + 1.5*d + rnormal()*.5}{p_end}
+{p 8 8}{cmd:. generate double x = runiform()*2 - 1}{p_end}
+{p 8 8}{cmd:. generate double d = x >= 0}{p_end}
+{p 8 8}{cmd:. generate double y = 1 + 2*x + 1.5*d + rnormal()*.5}{p_end}
 {p 8 8}{cmd:. rd2d_dist y x, b(0 0) h(.5)}{p_end}
 
 {marker stored_results}{...}

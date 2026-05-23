@@ -94,7 +94,7 @@ test_that("rd2d.distance returns location-style names", {
     names(fit),
     c(
       "main", "bw", "main.0", "main.1", "opt", "tau.hat", "tau.hat.q",
-      "se.hat", "se.hat.q", "params.cov", "cb", "pvalues", "tvalues",
+      "se.hat", "se.hat.q", "params.cov", "ci", "pvalues", "tvalues",
       "tau.itt", "tau.itt.q", "tau.fs", "tau.fs.q", "rdmodel", "call"
     )
   )
@@ -118,12 +118,12 @@ test_that("rdbw2d.distance automatic bandwidths reproduce manual rd2d.distance",
   )
   auto <- rd2d.distance(
     dat$y, dat$distance, b = b, p = 1, kernel = "tri", vce = "hc1",
-    masspoints = "off", bwcheck = NULL, cbands = TRUE, repp = 49
+    masspoints = "off", bwcheck = NULL, cbands = TRUE
   )
   manual <- rd2d.distance(
     dat$y, dat$distance, h = as.matrix(bws$bws[, c("h0", "h1")]),
     b = b, p = 1, kernel = "tri", vce = "hc1",
-    masspoints = "off", bwcheck = NULL, cbands = TRUE, repp = 49
+    masspoints = "off", bwcheck = NULL, cbands = TRUE
   )
 
   expect_equal(auto$bw, manual$bw, tolerance = 1e-10, ignore_attr = TRUE)
@@ -135,14 +135,16 @@ test_that("rd2d.distance smooth-boundary default uses q equal to p plus one", {
   dat <- make_distance_data(n = 500, seed = 20260512)
   fit <- rd2d.distance(
     dat$y, dat$distance, h = 0.65, b = data.frame(x.1 = 0, x.2 = 0),
-    p = 2, cbands = TRUE, masspoints = "off", bwcheck = NULL, repp = 49
+    p = 2, cbands = TRUE, masspoints = "off", bwcheck = NULL
   )
 
   expect_equal(fit$opt$kink.unknown, c(FALSE, FALSE))
   expect_equal(fit$opt$q, fit$opt$p + 1)
-  expect_output(summary(fit, cbands = "main"), "Unif. CB")
+  printed <- capture.output(summary(fit, cbands = "main", repp = 49))
+  expect_true(any(grepl("95% CI", printed)))
+  expect_true(any(grepl("Unif. CB", printed)))
 
-  capture.output(summ <- summary(fit, cbands = "main"))
+  capture.output(summ <- summary(fit, cbands = "main", repp = 49))
   expect_s3_class(summ, "summary.rd2d.distance")
   expect_equal(summ$outputs, "main")
   expect_equal(names(summ$tables), "main")
@@ -396,15 +398,25 @@ test_that("summary.rd2d.distance reports WBATE and LBATE rows", {
 
   fit <- rd2d.distance(
     dat$y, distance, h = 0.55, b = b, p = 1, q = 1,
-    cbands = TRUE, masspoints = "off", bwcheck = NULL, kernel = "tri",
-    repp = 49
+    cbands = TRUE, masspoints = "off", bwcheck = NULL, kernel = "tri"
   )
 
   set.seed(20260518)
-  capture.output(summ <- summary(fit, WBATE = weights, LBATE = TRUE))
+  printed <- capture.output(
+    summ <- summary(fit, WBATE = weights, LBATE = TRUE, repp = 49)
+  )
   tab <- summ$tables$main
 
   expect_equal(tail(rownames(tab), 2), c("WBATE", "LBATE"))
+
+  first_estimate_pos <- function(line) {
+    regexpr("-?\\d+\\.\\d{4}", line)[[1]]
+  }
+  point.line <- printed[grepl("^\\s*1\\s+", printed)][1]
+  wbate.line <- printed[grepl("^WBATE\\s+", printed)][1]
+  lbate.line <- printed[grepl("^LBATE\\s+", printed)][1]
+  expect_equal(first_estimate_pos(wbate.line), first_estimate_pos(point.line))
+  expect_equal(first_estimate_pos(lbate.line), first_estimate_pos(point.line))
 
   normalized.weights <- weights / sum(weights)
   wbate.se <- sqrt(as.numeric(
@@ -435,7 +447,7 @@ test_that("summary.rd2d.distance reports WBATE and LBATE rows", {
 
   set.seed(20260518)
   lbate.cval <- rd2d_cval(
-    fit$params.cov$main, rep = fit$opt$repp, side = fit$opt$side,
+    fit$params.cov$main, rep = 49, side = fit$opt$side,
     alpha = fit$opt$level, lp = Inf
   )
   pointwise.se <- sqrt(diag(fit$params.cov$main))
@@ -461,15 +473,14 @@ test_that("summary.rd2d.distance aggregates use the full boundary under subset",
 
   fit <- rd2d.distance(
     dat$y, distance, h = 0.55, b = b, p = 1, q = 1,
-    cbands = TRUE, masspoints = "off", bwcheck = NULL, kernel = "tri",
-    repp = 49
+    cbands = TRUE, masspoints = "off", bwcheck = NULL, kernel = "tri"
   )
 
   set.seed(20260519)
-  capture.output(summ.all <- summary(fit, WBATE = weights, LBATE = TRUE))
+  capture.output(summ.all <- summary(fit, WBATE = weights, LBATE = TRUE, repp = 49))
   set.seed(20260519)
   capture.output(summ.sub <- summary(
-    fit, WBATE = weights, LBATE = TRUE, subset = 1
+    fit, WBATE = weights, LBATE = TRUE, subset = 1, repp = 49
   ))
 
   aggregate.cols <- c(
@@ -541,7 +552,7 @@ test_that("fuzzy rd2d.distance returns main, itt, fs, and requested side outputs
     c(
       "main", "bw", "itt", "itt.0", "itt.1", "fs", "fs.0", "fs.1",
       "opt", "tau.hat", "tau.hat.q", "se.hat", "se.hat.q",
-      "params.cov", "cb", "pvalues", "tvalues", "tau.itt", "tau.itt.q",
+      "params.cov", "ci", "pvalues", "tvalues", "tau.itt", "tau.itt.q",
       "tau.fs", "tau.fs.q", "rdmodel", "call"
     )
   )
@@ -595,12 +606,12 @@ test_that("summary.rd2d.distance reports fuzzy WBATE and LBATE rows", {
   fit <- rd2d.distance(
     dat$y.fuzzy, distance, h = 0.55, b = b, p = 1, q = 1,
     fuzzy = dat$fuzzy, params.cov = c("main", "itt", "fs"),
-    cbands = FALSE, masspoints = "off", bwcheck = NULL, kernel = "tri",
-    repp = 49
+    cbands = FALSE, masspoints = "off", bwcheck = NULL, kernel = "tri"
   )
 
   capture.output(summ <- summary(
-    fit, output = c("main", "itt", "fs"), WBATE = weights, LBATE = TRUE
+    fit, output = c("main", "itt", "fs"), WBATE = weights, LBATE = TRUE,
+    repp = 49
   ))
   expect_equal(names(summ$tables), c("main", "itt", "fs"))
   for (output in c("main", "itt", "fs")) {

@@ -2,13 +2,13 @@
 * RD2D STATA PACKAGE -- rdbw2d_dist
 * Authors: Matias D. Cattaneo, Rocio Titiunik, Ruiqi Rae Yu
 ********************************************************************************
-*!version 0.1.0  2026-05-19
+*!version 0.2.0  2026-05-23
 
 capture program drop rdbw2d_dist
 program define rdbw2d_dist, eclass
 	version 16.0
 	syntax varlist(min=2 numeric) [if] [in] ///
-		[, B(numlist) Fuzzy(varname numeric) P(integer 1) ///
+		[, B(string asis) Fuzzy(varname numeric) P(integer 1) ///
 		   KINKUNKnown(string) KINKPOSition(numlist) KERnel(string) ///
 		   BWSELECT(string) BWPARAM(string) VCE(string) BWCHECK(integer -1) ///
 		   MASSpoints(string) CLuster(varname numeric) SCALEREGUL(real 1) ///
@@ -34,18 +34,32 @@ program define rdbw2d_dist, eclass
 		tokenize "`ku'"
 		local kink1 = real("`1'")
 	}
+	if missing(`kink1') | !inlist(`kink1', 0, 1) {
+		di as error "kinkunknown() must be on, off, or a 0/1 indicator"
+		exit 198
+	}
+	if "`kinkposition'" != "" & `kink1' {
+		di as error "use either kinkposition() or kinkunknown(), not both"
+		exit 198
+	}
 
 	if "$RD2D_MATA_LOADED" != "1" {
-		local rd2d_loadonly 1
-		quietly findfile rd2d_functions.do
-		quietly do "`r(fn)'"
+		tempname rd2d_mlib_ok
+		capture quietly mata: mata mlib index
+		capture quietly mata: st_numscalar("`rd2d_mlib_ok'", rd2d_mlib_loaded())
+		if _rc {
+			local rd2d_loadonly 1
+			quietly findfile rd2d_functions.do
+			quietly do "`r(fn)'"
+		}
 		global RD2D_MATA_LOADED 1
 	}
 
 	tempname bw
 	mata: rdbw2d_distance_stata("`bw'", "`y'", "`distvars'", "`fuzzy'", ///
 		"`cluster'", "`touse'", st_local("b"), `p', "`kernel'", ///
-		"`bwselect'", `bwcheck', `kink1')
+		"`bwselect'", "`bwparam'", "`vce'", `bwcheck', `kink1', ///
+		st_local("kinkposition"), `scaleregul', `cqt')
 
 	matrix colnames `bw' = b1 b2 h0 h1 N_Co N_Tr
 	ereturn clear

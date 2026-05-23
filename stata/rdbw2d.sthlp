@@ -1,5 +1,5 @@
 {smcl}
-{* *!version 0.1.0  2026-05-19}{...}
+{* *!version 0.2.0  2026-05-23}{...}
 {viewerjumpto "Syntax" "rdbw2d##syntax"}{...}
 {viewerjumpto "Description" "rdbw2d##description"}{...}
 {viewerjumpto "Options" "rdbw2d##options"}{...}
@@ -16,6 +16,8 @@
 {p 4 8}{cmd:rdbw2d} {it:y x1 x2 assignment} {ifin}{cmd:,}
 {cmd:b(}{it:# # [# # ...]}{cmd:)}
 [{cmd:fuzzy(}{it:varname}{cmd:)}
+{cmd:deriv(}{it:# [#]}{cmd:)}
+{cmd:tangvec(}{it:# # [# # ...]}{cmd:)}
 {cmd:p(}{it:#}{cmd:)}
 {cmd:kernel(}{it:kernel}{cmd:)}
 {cmd:kerneltype(}{it:type}{cmd:)}
@@ -41,6 +43,10 @@
 {p 4 8}{cmd:b()} specifies boundary evaluation points as pairs and is required.{p_end}
 
 {p 4 8}{cmd:fuzzy()} specifies treatment receipt/status for fuzzy bandwidth selection. If supplied, {cmd:bwparam()} controls whether the selector targets the fuzzy Wald ratio or the reduced-form outcome discontinuity.{p_end}
+
+{p 4 8}{cmd:deriv()} specifies derivative orders in the first and second coordinates. Default is {cmd:deriv(0 0)}.{p_end}
+
+{p 4 8}{cmd:tangvec()} supplies directional derivative vectors, one pair per boundary point. If supplied, {cmd:tangvec()} overrides {cmd:deriv()} and requires {cmd:p(1)} or higher.{p_end}
 
 {p 4 8}{cmd:p()} sets the local polynomial order. Default is {cmd:p(1)}.{p_end}
 
@@ -93,12 +99,13 @@
 {title:Examples}
 
 {p 8 8}{cmd:. clear}{p_end}
+{p 8 8}{cmd:. set type double}{p_end}
 {p 8 8}{cmd:. set obs 800}{p_end}
 {p 8 8}{cmd:. set seed 123}{p_end}
-{p 8 8}{cmd:. gen x1 = rnormal()}{p_end}
-{p 8 8}{cmd:. gen x2 = rnormal()}{p_end}
-{p 8 8}{cmd:. gen d = x1 >= 0}{p_end}
-{p 8 8}{cmd:. gen y = 3 + 2*x1 + 1.5*x2 + d + rnormal()}{p_end}
+{p 8 8}{cmd:. generate double x1 = rnormal()}{p_end}
+{p 8 8}{cmd:. generate double x2 = rnormal()}{p_end}
+{p 8 8}{cmd:. generate double d = x1 >= 0}{p_end}
+{p 8 8}{cmd:. generate double y = 3 + 2*x1 + 1.5*x2 + d + rnormal()}{p_end}
 {p 8 8}{cmd:. rdbw2d y x1 x2 d, b(0 0 0 1)}{p_end}
 
 {marker stored_results}{...}

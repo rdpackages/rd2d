@@ -52,7 +52,6 @@
 #' \code{summary(..., cbands = "main")}, \code{summary(..., WBATE = weights)},
 #' or \code{summary(..., LBATE = TRUE)}. Default is \code{TRUE}.
 #' @param side Type of confidence interval. Options: \code{"two"} (two-sided, default), \code{"left"} (left tail), or \code{"right"} (right tail).
-#' @param repp Number of bootstrap repetitions used for critical value simulation. Default is \code{1000}.
 #' @param bwselect Bandwidth selection strategy. Options:
 #' \itemize{
 #' \item \code{"mserd"}. One common MSE-optimal bandwidth selector for the boundary RD treatment effect estimator for each evaluation point (default).
@@ -142,7 +141,7 @@
 #'   \item{\code{se.hat.q}}{Standard errors corresponding to \eqn{\widehat{\tau}_q(\mathbf{b})}.}
 #'   \item{\code{params.cov}}{List containing covariance matrices requested
 #'   for aggregate or uniform inference.}
-#'   \item{\code{cb}}{Pointwise confidence interval endpoints.}
+#'   \item{\code{ci}}{Pointwise confidence interval endpoints.}
 #'   \item{\code{pvalues}}{Two-sided p-values based on bias-corrected
 #'   estimates.}
 #'   \item{\code{tvalues}}{t-statistics based on bias-corrected estimates.}
@@ -221,7 +220,7 @@
 rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
                       kink.unknown = c(FALSE, FALSE), kink.position = NULL,
                       kernel = c("tri","triangular", "epa","epanechnikov","uni","uniform","gau","gaussian"),
-                      level = 95, cbands = TRUE, side = c("two", "left", "right"), repp = 1000,
+                      level = 95, cbands = TRUE, side = c("two", "left", "right"),
                       bwselect = c("mserd", "cerrd", "imserd", "icerrd",
                                    "msetwo", "certwo", "imsetwo", "icertwo",
                                    "user provided"),
@@ -317,12 +316,6 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
   # level must be numeric in (0, 100)
   if (!is.numeric(level) || level <= 0 || level >= 100) {
     print("level must be a numeric value between 0 and 100")
-    exit <- 1
-  }
-
-  # repp must be a positive integer
-  if (!is.numeric(repp) || repp < 1 || repp != as.integer(repp)) {
-    print("repp must be a positive integer")
     exit <- 1
   }
 
@@ -504,6 +497,11 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
       vce = vce, bwcheck = bwcheck, masspoints = masspoints, cluster = cluster,
       cbands = need.p.cov.cache
     )
+    masspoint.counts <- list(
+      M.vec = distancefit.p$M.vec,
+      M.0.vec = distancefit.p$M.0.vec,
+      M.1.vec = distancefit.p$M.1.vec
+    )
     estimate.p <- distancefit.p$Estimate
     tau.hat.p <- estimate.p$mu1 - estimate.p$mu0
     se.hat.p <- sqrt(estimate.p$se0^2 + estimate.p$se1^2)
@@ -518,7 +516,17 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
     distancefit.fs.p <- rd2d_distance_fit(
       Y = fuzzy, distance = distance_mat, h = hfull, p = p, b = b, kernel = kernel,
       vce = vce, bwcheck = bwcheck, masspoints = masspoints, cluster = cluster,
-      cbands = TRUE
+      cbands = TRUE,
+      masspoint.counts = list(
+        M.vec = distancefit.Y.p$M.vec,
+        M.0.vec = distancefit.Y.p$M.0.vec,
+        M.1.vec = distancefit.Y.p$M.1.vec
+      )
+    )
+    masspoint.counts <- list(
+      M.vec = distancefit.Y.p$M.vec,
+      M.0.vec = distancefit.Y.p$M.0.vec,
+      M.1.vec = distancefit.Y.p$M.1.vec
     )
     estimate.itt.p <- distancefit.Y.p$Estimate
     estimate.fs.p <- distancefit.fs.p$Estimate
@@ -567,7 +575,8 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
       distancefit.q <- rd2d_distance_fit(
         Y = Y, distance = distance_mat, h = hfull.rbc, p = q, b = b, kernel = kernel,
         vce = vce, bwcheck = bwcheck, masspoints = masspoints, cluster = cluster,
-        cbands = length(params.cov) > 0
+        cbands = length(params.cov) > 0,
+        masspoint.counts = masspoint.counts
       )
     }
     estimate.q <- distancefit.q$Estimate
@@ -577,19 +586,20 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
     eN1.q <- estimate.q$N1
 
     if (length(params.cov) > 0) {
+      project.q <- rd2d_distance_project_fit_sides(distancefit.q, q, clustered)
       if ("main" %in% params.cov) {
-        cov.tables$main <- rd2d_distance_cov_from_fits(
-          distancefit.q, distancefit.q, q, clustered, side = "both"
+        cov.tables$main <- rd2d_distance_cov_from_projects(
+          project.q, project.q, side = "both", symmetric = TRUE
         )
       }
       if ("main.0" %in% params.cov) {
-        cov.tables$main.0 <- rd2d_distance_cov_from_fits(
-          distancefit.q, distancefit.q, q, clustered, side = "0"
+        cov.tables$main.0 <- rd2d_distance_cov_from_projects(
+          project.q, project.q, side = "0", symmetric = TRUE
         )
       }
       if ("main.1" %in% params.cov) {
-        cov.tables$main.1 <- rd2d_distance_cov_from_fits(
-          distancefit.q, distancefit.q, q, clustered, side = "1"
+        cov.tables$main.1 <- rd2d_distance_cov_from_projects(
+          project.q, project.q, side = "1", symmetric = TRUE
         )
       }
     }
@@ -601,12 +611,14 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
       distancefit.Y.q <- rd2d_distance_fit(
         Y = Y, distance = distance_mat, h = hfull.rbc, p = q, b = b, kernel = kernel,
         vce = vce, bwcheck = bwcheck, masspoints = masspoints, cluster = cluster,
-        cbands = TRUE
+        cbands = TRUE,
+        masspoint.counts = masspoint.counts
       )
       distancefit.fs.q <- rd2d_distance_fit(
         Y = fuzzy, distance = distance_mat, h = hfull.rbc, p = q, b = b, kernel = kernel,
         vce = vce, bwcheck = bwcheck, masspoints = masspoints, cluster = cluster,
-        cbands = TRUE
+        cbands = TRUE,
+        masspoint.counts = masspoint.counts
       )
     }
     estimate.itt.q <- distancefit.Y.q$Estimate
@@ -659,7 +671,7 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
     CI.upper <- rep(Inf, length(CI.lower))
   }
 
-  cb.hat.q <- list(CI.l = CI.lower, CI.r = CI.upper)
+  ci.hat.q <- list(CI.l = CI.lower, CI.r = CI.upper)
 
   ############################### outputs ######################################
 
@@ -818,7 +830,7 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
         bwselect = bwselect, bwparam = bwparam, vce = vce,
         bwcheck = bwcheck, masspoints = masspoints, cluster = cluster,
         clustered = clustered, scaleregul = scaleregul, cqt = cqt,
-        level = level, repp = repp, side = side, cbands = cbands,
+        level = level, side = side, cbands = cbands,
         params.other = params.other, params.cov = params.cov,
         fuzzy = is.fuzzy,
         h0 = hfull[,1], h1 = hfull[,2],
@@ -828,7 +840,7 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
       tau.hat = tau.hat.p, tau.hat.q = tau.hat.q,
       se.hat = se.hat.p, se.hat.q = se.hat.q,
       params.cov = cov.tables,
-      cb = cb.hat.q, pvalues = pvalues, tvalues = tvalues,
+      ci = ci.hat.q, pvalues = pvalues, tvalues = tvalues,
       tau.itt = tau.itt.p, tau.itt.q = tau.itt.q,
       tau.fs = tau.fs.p, tau.fs.q = tau.fs.q,
       rdmodel = rdmodel
@@ -903,6 +915,9 @@ print.rd2d.distance <- function(x,...) {
 #'       Other stored outputs can be requested when their covariance matrices
 #'       were stored through \code{params.cov}. The default displays pointwise
 #'       confidence intervals.
+#'     \item \code{repp}: Positive integer. Number of Gaussian simulation
+#'       repetitions used for uniform confidence band and LBATE critical
+#'       values. Default is \code{1000}.
 #'     \item \code{WBATE}: Optional numeric weights for a weighted boundary
 #'       average treatment effect row. The weights must match the full set of
 #'       evaluation points and are normalized internally. The fitted object must
@@ -924,7 +939,8 @@ print.rd2d.distance <- function(x,...) {
 #'     \item \code{sep}: Integer vector of length three. Controls spacing in the output.
 #'       \code{sep[1]} controls spacing for the columns of boundary points, estimation,
 #'       t-value, and p-value in the \code{"main"} table.
-#'       \code{sep[2]} controls spacing for confidence intervals (or bands) in the \code{"main"} table.
+#'       \code{sep[2]} controls spacing for confidence intervals and
+#'       confidence bands in the \code{"main"} table.
 #'       \code{sep[3]} controls spacing for the columns in the \code{"bw"} table.
 #'       Default is \code{c(7, 17, 8)}.
 #'   }
@@ -932,7 +948,9 @@ print.rd2d.distance <- function(x,...) {
 #' @return Invisibly returns an object of class \code{"summary.rd2d.distance"}, a
 #'   list with elements:
 #'   \itemize{
-#'     \item \code{tables}: named list of returned summary tables.
+#'     \item \code{tables}: named list of returned summary tables. Estimate
+#'       tables retain pointwise confidence intervals and add \code{cb.lower}
+#'       and \code{cb.upper} only when uniform bands are requested.
 #'     \item \code{cbands}: named list of confidence-band endpoints for outputs
 #'       requested through \code{cbands}.
 #'     \item \code{outputs}: character vector of summarized outputs.
@@ -959,7 +977,9 @@ summary.rd2d.distance <- function(object, ...) {
   x <- object
 
   args <- list(...)
-  valid.summary.args <- c("cbands", "WBATE", "LBATE", "subset", "output", "sep")
+  valid.summary.args <- c(
+    "cbands", "repp", "WBATE", "LBATE", "subset", "output", "sep"
+  )
   arg.names <- names(args)
   if (length(args) > 0 && (is.null(arg.names) || any(arg.names == ""))) {
     stop("All summary.rd2d.distance options must be named.", call. = FALSE)
@@ -986,6 +1006,8 @@ summary.rd2d.distance <- function(object, ...) {
   }
   WBATE <- args[["WBATE"]]
   LBATE <- isTRUE(args[["LBATE"]])
+  repp <- if (is.null(args[["repp"]])) 1000 else args[["repp"]]
+  repp <- rd2d_validate_repp(repp)
 
   if (is.null(args[["subset"]])) {
     subset <- NULL
@@ -1152,17 +1174,17 @@ summary.rd2d.distance <- function(object, ...) {
       if (LBATE.now) require_covariance("LBATE inference")
 
       result.subset <- results[subset.now,,drop = FALSE]
-      interval.lower <- results$ci.lower
-      interval.upper <- results$ci.upper
       cbands.return <- NULL
+      cb.lower <- NULL
+      cb.upper <- NULL
       if (bands.requested) {
         cb.out <- rd2d_cb(
-          results$estimate.q, cov.table, x$opt$repp, x$opt$side, x$opt$level
+          results$estimate.q, cov.table, repp, x$opt$side, x$opt$level
         )
-        interval.lower <- cb.out$CB.l
-        interval.upper <- cb.out$CB.r
-        result.subset$cb.lower <- cb.out$CB.l[subset.now]
-        result.subset$cb.upper <- cb.out$CB.r[subset.now]
+        cb.lower <- cb.out$CB.l
+        cb.upper <- cb.out$CB.r
+        result.subset$cb.lower <- cb.lower[subset.now]
+        result.subset$cb.upper <- cb.upper[subset.now]
         cbands.return <- result.subset[, c("cb.lower", "cb.upper"), drop = FALSE]
       }
 
@@ -1174,7 +1196,12 @@ summary.rd2d.distance <- function(object, ...) {
         col_widths <- c(4, sep[1], sep[1], sep[1], sep[2])
       }
       if (bands.requested) {
-        headers[length(headers)] <- sprintf("%d%% Unif. CB", x$opt$level)
+        headers <- c(headers, sprintf("%d%% Unif. CB", x$opt$level))
+        col_widths <- c(col_widths, sep[2])
+      }
+      col_widths <- pmax(col_widths, nchar(headers))
+      if (!is.null(WBATE.now) || LBATE.now) {
+        col_widths[1] <- max(col_widths[1], nchar(c("WBATE", "LBATE")))
       }
 
       rule.width <- sum(col_widths) + 2 * (length(headers) - 1)
@@ -1247,6 +1274,9 @@ summary.rd2d.distance <- function(object, ...) {
             format_interval(lower, upper, col_widths[5])
           )
         }
+        if (bands.requested) {
+          row_vals <- c(row_vals, format_blank(col_widths[length(col_widths)]))
+        }
         cat(paste(row_vals, collapse = "  "), "\n")
       }
 
@@ -1303,7 +1333,7 @@ summary.rd2d.distance <- function(object, ...) {
         if (covariance_available(cov.mat, nrow(result.all)) &&
             all(is.finite(result.all[["estimate.q"]]))) {
           se <- sqrt(diag(cov.mat))
-          cval <- rd2d_cval(cov.mat, rep = x$opt$repp, side = summary.side,
+          cval <- rd2d_cval(cov.mat, rep = repp, side = summary.side,
                             alpha = x$opt$level, lp = Inf)
           if (summary.side == "two") {
             out$lower <- max(result.all[["estimate.q"]] - cval * se)
@@ -1330,24 +1360,28 @@ summary.rd2d.distance <- function(object, ...) {
               formatC(results$estimate.p[i], format = "f", digits = 4, width = col_widths[4]),
               formatC(results$t.value[i], format = "f", digits = 4, width = col_widths[5]),
               formatC(results$p.value[i], format = "f", digits = 4, width = col_widths[6]),
-              formatC(
-                paste0("[", formatC(interval.lower[i], format = "f", digits = 4),
-                       ", ", formatC(interval.upper[i], format = "f", digits = 4), "]"),
-                width = col_widths[7], format = "s"
-              )
+              format_interval(results$ci.lower[i], results$ci.upper[i], col_widths[7])
             )
+            if (bands.requested) {
+              row_vals <- c(
+                row_vals,
+                format_interval(cb.lower[i], cb.upper[i], col_widths[8])
+              )
+            }
           } else {
             row_vals <- c(
               formatC(i, width = col_widths[1], format = "d"),
               formatC(results$estimate.p[i], format = "f", digits = 4, width = col_widths[2]),
               formatC(results$t.value[i], format = "f", digits = 4, width = col_widths[3]),
               formatC(results$p.value[i], format = "f", digits = 4, width = col_widths[4]),
-              formatC(
-                paste0("[", formatC(interval.lower[i], format = "f", digits = 4),
-                       ", ", formatC(interval.upper[i], format = "f", digits = 4), "]"),
-                width = col_widths[5], format = "s"
-              )
+              format_interval(results$ci.lower[i], results$ci.upper[i], col_widths[5])
             )
+            if (bands.requested) {
+              row_vals <- c(
+                row_vals,
+                format_interval(cb.lower[i], cb.upper[i], col_widths[6])
+              )
+            }
           }
           cat(paste(row_vals, collapse = "  "), "\n")
         }

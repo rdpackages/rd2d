@@ -14,7 +14,8 @@ To install from PyPI:
 pip install rd2d
 ```
 
-- Illustration: [Simulation and estimation](Python/rd2d_illustration.py), [Plots](Python/rd2d_plot.py).
+- Illustration: [Dataset](Python/rd2d_data.csv),
+  [Numerical examples](Python/rd2d_illustration.py), [Plots](Python/rd2d_plot.py).
 
 ## R Implementation
 
@@ -25,7 +26,8 @@ install.packages('rd2d')
 
 - Help: [R manual](https://cran.r-project.org/web/packages/rd2d/rd2d.pdf), [CRAN repository](https://CRAN.R-project.org/package=rd2d).
 
-- Illustration: [Simulation and estimation](R/rd2d_illustration.R), [Plots](R/rd2d_plot.R).
+- Illustration: [Dataset](R/rd2d_data.csv),
+  [Numerical examples](R/rd2d_illustration.R), [Plots](R/rd2d_plot.R).
 
 ## Stata Implementation
 
@@ -34,8 +36,8 @@ From Stata, install from GitHub with:
 net install rd2d, from(https://raw.githubusercontent.com/rdpackages/rd2d/main/stata) replace
 ```
 
-- Illustration: [Location-based examples](stata/rd2d_illustration.do),
-  [distance-based examples](stata/rd2d_dist_illustration.do).
+- Illustration: [Dataset](stata/rd2d_data.csv),
+  [Numerical examples](stata/rd2d_illustration.do).
 
 
 ## References

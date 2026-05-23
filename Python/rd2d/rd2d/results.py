@@ -94,6 +94,17 @@ def _simulated_cval(cov: np.ndarray, level: float, side: str, reps: int) -> floa
     return float(np.quantile(stat, level / 100.0, method="averaged_inverted_cdf"))
 
 
+def _validate_repp(repp: int) -> int:
+    try:
+        value = float(repp)
+    except (TypeError, ValueError):
+        raise ValueError("repp must be a positive integer.") from None
+    reps = int(value)
+    if not np.isfinite(value) or reps < 1 or reps != value:
+        raise ValueError("repp must be a positive integer.")
+    return reps
+
+
 def _uniform_band(est: np.ndarray, cov: np.ndarray, level: float, side: str, reps: int) -> tuple[np.ndarray, np.ndarray]:
     se = np.sqrt(np.maximum(np.diag(cov), 0.0))
     cval = _simulated_cval(cov, level, side, reps)
@@ -166,6 +177,7 @@ def summary(
     *,
     output: str | list[str] | tuple[str, ...] | None = None,
     cbands: str | list[str] | tuple[str, ...] | None = None,
+    repp: int = 1000,
     WBATE: np.ndarray | list[float] | None = None,
     LBATE: bool = False,
     subset: list[int] | np.ndarray | None = None,
@@ -181,6 +193,9 @@ def summary(
     cbands : str or sequence of str, optional
         Result table names for which uniform confidence bands should be added.
         The original fit must store the matching covariance matrix.
+    repp : int, default 1000
+        Number of Gaussian simulation repetitions for uniform confidence bands
+        and LBATE critical values.
     WBATE : array-like, optional
         Weights for a weighted boundary average treatment effect row.
     LBATE : bool, default False
@@ -214,7 +229,7 @@ def summary(
     opt = result.get("opt", {})
     level = float(opt.get("level", 95.0))
     side = str(opt.get("side", "two"))
-    reps = int(opt.get("repp", 1000))
+    reps = _validate_repp(repp)
 
     tables: dict[str, pd.DataFrame] = {}
     bands: dict[str, pd.DataFrame] = {}

@@ -279,11 +279,10 @@ rdbw2d.distance <- function(Y, distance, b = NULL, p = 1,
   if (masspoints == "check" | masspoints == "adjust"){
     for (j in 1:ncol(distance_mat)){
       distance.score <- distance_mat[,j]
-      unique.const <- rd2d_distance_unique(distance.score)
-      unique <- unique.const$unique
-      M.0 <- sum(unique < 0)
-      M.1 <- sum(unique >= 0)
-      M <- M.0 + M.1
+      unique.counts <- rd2d_distance_unique_counts(distance.score)
+      M <- unique.counts["M"]
+      M.0 <- unique.counts["M.0"]
+      M.1 <- unique.counts["M.1"]
       mass <- 1 - M / N
       M.vec[j] <- M
       M.0.vec[j] <- M.0

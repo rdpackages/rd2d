@@ -18,7 +18,6 @@ rd2d.distance(
   level = 95,
   cbands = TRUE,
   side = c("two", "left", "right"),
-  repp = 1000,
   bwselect = c("mserd", "cerrd", "imserd", "icerrd", "msetwo", "certwo", "imsetwo",
     "icertwo", "user provided"),
   bwparam = c("main", "itt"),
@@ -84,8 +83,6 @@ for uniform confidence bands and aggregate inference computed by
 or \code{summary(..., LBATE = TRUE)}. Default is \code{TRUE}.}
 
 \item{side}{Type of confidence interval. Options: \code{"two"} (two-sided, default), \code{"left"} (left tail), or \code{"right"} (right tail).}
-
-\item{repp}{Number of bootstrap repetitions used for critical value simulation. Default is \code{1000}.}
 
 \item{bwselect}{Bandwidth selection strategy. Options:
 \itemize{
@@ -187,7 +184,7 @@ first-stage treatment receipt/status summary tables requested through \code{para
 \item{\code{se.hat.q}}{Standard errors corresponding to \eqn{\widehat{\tau}_q(\mathbf{b})}.}
 \item{\code{params.cov}}{List containing covariance matrices requested
 for aggregate or uniform inference.}
-\item{\code{cb}}{Pointwise confidence interval endpoints.}
+\item{\code{ci}}{Pointwise confidence interval endpoints.}
 \item{\code{pvalues}}{Two-sided p-values based on bias-corrected
 estimates.}
 \item{\code{tvalues}}{t-statistics based on bias-corrected estimates.}

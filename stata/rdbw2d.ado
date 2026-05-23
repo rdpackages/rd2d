@@ -2,12 +2,12 @@
 * RD2D STATA PACKAGE -- rdbw2d
 * Authors: Matias D. Cattaneo, Rocio Titiunik, Ruiqi Rae Yu
 ********************************************************************************
-*!version 0.1.0  2026-05-19
+*!version 0.2.0  2026-05-23
 
 capture program drop rdbw2d
 program define rdbw2d, eclass
 	version 16.0
-	syntax varlist(min=4 max=4 numeric) [if] [in], B(numlist min=2) ///
+	syntax varlist(min=4 max=4 numeric) [if] [in], B(string asis) ///
 		[ Fuzzy(varname numeric) DERiv(numlist max=2) TANGvec(numlist) ///
 		  P(integer 1) KERnel(string) KERNELtype(string) ///
 		  BWSELECT(string) BWPARAM(string) Method(string) VCE(string) ///
@@ -36,16 +36,24 @@ program define rdbw2d, eclass
 	if lower("`stdvars'") == "off" local stdflag = 0
 
 	if "$RD2D_MATA_LOADED" != "1" {
-		local rd2d_loadonly 1
-		quietly findfile rd2d_functions.do
-		quietly do "`r(fn)'"
+		tempname rd2d_mlib_ok
+		capture quietly mata: mata mlib index
+		capture quietly mata: st_numscalar("`rd2d_mlib_ok'", rd2d_mlib_loaded())
+		if _rc {
+			local rd2d_loadonly 1
+			quietly findfile rd2d_functions.do
+			quietly do "`r(fn)'"
+		}
 		global RD2D_MATA_LOADED 1
 	}
 
 	tempname bw
 	mata: rdbw2d_location_stata("`bw'", "`y'", "`x1'", "`x2'", "`d'", ///
-		"`fuzzy'", "`cluster'", "`touse'", st_local("b"), `p', ///
-		"`kernel'", "`kerneltype'", "`bwselect'", `bwcheck', `stdflag')
+		"`fuzzy'", "`cluster'", "`touse'", st_local("b"), ///
+		st_local("deriv"), st_local("tangvec"), `p', ///
+		"`kernel'", "`kerneltype'", "`bwselect'", "`bwparam'", ///
+		"`method'", "`vce'", `bwcheck', "`masspoints'", ///
+		`scaleregul', `scalebiascrct', `stdflag')
 
 	matrix colnames `bw' = b1 b2 h01 h02 h11 h12 N_Co N_Tr
 	ereturn clear

@@ -118,6 +118,30 @@ rdbw2d_distance_local_intercepts_multi <- function(Y, fuzzy, distance, h, p, ker
   c(y = beta[1, 1], fuzzy = beta[1, 2])
 }
 
+rd2d_distance_bwcheck_limits <- function(distance, bwcheck) {
+  n <- length(distance)
+  if (n == 0) return(c(min = NA_real_, max = NA_real_))
+  k <- min(as.integer(bwcheck), n)
+  kth <- if (k == n) max(distance) else sort.int(distance, partial = k)[k]
+  c(min = kth, max = max(distance))
+}
+
+rd2d_distance_unique_counts <- function(distance) {
+  n <- length(distance)
+  if (n == 0) return(c(M = 0, M.0 = 0, M.1 = 0))
+
+  if (anyDuplicated(distance) == 0) {
+    m.0 <- sum(distance < 0)
+    m.1 <- n - m.0
+  } else {
+    unique.distance <- unique(distance)
+    m.0 <- sum(unique.distance < 0)
+    m.1 <- length(unique.distance) - m.0
+  }
+
+  c(M = m.0 + m.1, M.0 = m.0, M.1 = m.1)
+}
+
 rdbw2d_distance_bw <- function(Y, distance, p = 1, kernel, target.vec = NULL,
                   rot = NULL, vce = "hc0", cluster = NULL,
                   bwcheck = 50 + p + 1, scaleregul = 1, cqt = 0.5,
@@ -202,12 +226,12 @@ rdbw2d_distance_bw <- function(Y, distance, p = 1, kernel, target.vec = NULL,
     bw.max.1 <- NA
 
     if (!is.null(bwcheck)) { # Bandwidth restrictions
-      sorted.0 <- sort(distance.0)
-      sorted.1 <- sort(distance.1)
-      bw.min.0   <- sorted.0[min(bwcheck,length(sorted.0))]
-      bw.min.1   <- sorted.1[min(bwcheck,length(sorted.1))]
-      bw.max.0   <- sorted.0[length(sorted.0)]
-      bw.max.1   <- sorted.1[length(sorted.1)]
+      bounds.0 <- rd2d_distance_bwcheck_limits(distance.0, bwcheck)
+      bounds.1 <- rd2d_distance_bwcheck_limits(distance.1, bwcheck)
+      bw.min.0   <- bounds.0["min"]
+      bw.min.1   <- bounds.1["min"]
+      bw.max.0   <- bounds.0["max"]
+      bw.max.1   <- bounds.1["max"]
       dn.0     <- max(dn, bw.min.0)
       dn.1     <- max(dn, bw.min.1)
       dn.0     <- min(dn.0, bw.max.0)
@@ -362,7 +386,8 @@ rdbw2d_distance_bw <- function(Y, distance, p = 1, kernel, target.vec = NULL,
 ############################### rd2d_distance_fit ##################################
 
 rd2d_distance_fit <- function(Y, distance, h, p, b, kernel, vce, bwcheck,
-                              masspoints, cluster, cbands = TRUE){
+                              masspoints, cluster, cbands = TRUE,
+                              masspoint.counts = NULL){
 
   distance_mat <- distance
   neval <- ncol(distance_mat)
@@ -403,14 +428,17 @@ rd2d_distance_fit <- function(Y, distance, h, p, b, kernel, vce, bwcheck,
   M.0.vec <- rep(N.0, neval)
   M.1.vec <- rep(N.1, neval)
   is_mass_point <- 0
-  if (masspoints == "check" | masspoints == "adjust"){
+  if (!is.null(masspoint.counts)) {
+    M.vec <- masspoint.counts$M.vec
+    M.0.vec <- masspoint.counts$M.0.vec
+    M.1.vec <- masspoint.counts$M.1.vec
+  } else if (masspoints == "check" | masspoints == "adjust"){
     for (j in 1:ncol(distance_mat)){
       distance <- distance_mat[,j]
-      unique.const <- rd2d_distance_unique(distance)
-      unique <- unique.const$unique
-      M.0 <- sum(unique < 0)
-      M.1 <- sum(unique >= 0)
-      M <- M.0 + M.1
+      unique.counts <- rd2d_distance_unique_counts(distance)
+      M <- unique.counts["M"]
+      M.0 <- unique.counts["M.0"]
+      M.1 <- unique.counts["M.1"]
       mass <- 1 - M / N
       M.vec[j] <- M
       M.0.vec[j] <- M.0
@@ -453,12 +481,12 @@ rd2d_distance_fit <- function(Y, distance, h, p, b, kernel, vce, bwcheck,
     bw.max.1 <- NA
 
     if (!is.null(bwcheck)) { # Bandwidth restrictions
-      sorted.0 <- sort(distance.0)
-      sorted.1 <- sort(distance.1)
-      bw.min.0   <- sorted.0[min(bwcheck,length(sorted.0))]
-      bw.min.1   <- sorted.1[min(bwcheck,length(sorted.1))]
-      bw.max.0   <- sorted.0[length(sorted.0)]
-      bw.max.1   <- sorted.1[length(sorted.1)]
+      bounds.0 <- rd2d_distance_bwcheck_limits(distance.0, bwcheck)
+      bounds.1 <- rd2d_distance_bwcheck_limits(distance.1, bwcheck)
+      bw.min.0   <- bounds.0["min"]
+      bw.min.1   <- bounds.1["min"]
+      bw.max.0   <- bounds.0["max"]
+      bw.max.1   <- bounds.1["max"]
       h.0     <- max(h.0, bw.min.0)
       h.1     <- max(h.1, bw.min.1)
       h.0     <- min(h.0, bw.max.0)
@@ -614,32 +642,46 @@ rd2d_distance_project_cov_halves <- function(halves, inds, hgrid, p,
   projected
 }
 
+rd2d_distance_project_fit_sides <- function(fit, p, clustered = FALSE) {
+  list(
+    `0` = rd2d_distance_project_cov_halves(
+      fit$sig.halfs.0, fit$Indicators.0, fit$Estimate$h0, p, clustered
+    ),
+    `1` = rd2d_distance_project_cov_halves(
+      fit$sig.halfs.1, fit$Indicators.1, fit$Estimate$h1, p, clustered
+    )
+  )
+}
+
+rd2d_distance_cov_from_projects <- function(project.a, project.b,
+                                            side = c("both", "0", "1"),
+                                            symmetric = FALSE) {
+  side <- match.arg(side)
+
+  if (side == "0") {
+    cov.out <- crossprod(project.a$`0`, project.b$`0`)
+  } else if (side == "1") {
+    cov.out <- crossprod(project.a$`1`, project.b$`1`)
+  } else {
+    cov.out <- crossprod(project.a$`0`, project.b$`0`) +
+      crossprod(project.a$`1`, project.b$`1`)
+  }
+
+  if (symmetric) cov.out <- (cov.out + t(cov.out)) / 2
+  cov.out
+}
+
 rd2d_distance_cov_from_fits <- function(fit.a, fit.b, p, clustered = FALSE,
                                         side = c("both", "0", "1")) {
   side <- match.arg(side)
-
-  project <- function(fit, side.id) {
-    if (side.id == "0") {
-      rd2d_distance_project_cov_halves(
-        fit$sig.halfs.0, fit$Indicators.0, fit$Estimate$h0, p, clustered
-      )
-    } else {
-      rd2d_distance_project_cov_halves(
-        fit$sig.halfs.1, fit$Indicators.1, fit$Estimate$h1, p, clustered
-      )
-    }
+  same.fit <- identical(fit.a, fit.b)
+  project.a <- rd2d_distance_project_fit_sides(fit.a, p, clustered)
+  project.b <- if (same.fit) project.a else {
+    rd2d_distance_project_fit_sides(fit.b, p, clustered)
   }
-
-  if (side == "0") {
-    cov.out <- crossprod(project(fit.a, "0"), project(fit.b, "0"))
-  } else if (side == "1") {
-    cov.out <- crossprod(project(fit.a, "1"), project(fit.b, "1"))
-  } else {
-    cov.out <- crossprod(project(fit.a, "0"), project(fit.b, "0")) +
-      crossprod(project(fit.a, "1"), project(fit.b, "1"))
-  }
-
-  if (identical(fit.a, fit.b)) cov.out <- (cov.out + t(cov.out)) / 2
+  cov.out <- rd2d_distance_cov_from_projects(
+    project.a, project.b, side = side, symmetric = same.fit
+  )
   cov.out
 }
 
@@ -656,15 +698,24 @@ rd2d_distance_fuzzy_cov_tables <- function(fit.itt, fit.fs, p, tau.itt,
   need.main <- "main" %in% outputs
   need.itt <- any(c("main", "itt") %in% outputs)
   need.fs <- any(c("main", "fs") %in% outputs)
+  need.itt.side <- any(c("itt.0", "itt.1") %in% outputs)
+  need.fs.side <- any(c("fs.0", "fs.1") %in% outputs)
+
+  if (need.itt || need.itt.side) {
+    project.itt <- rd2d_distance_project_fit_sides(fit.itt, p, clustered)
+  }
+  if (need.fs || need.fs.side) {
+    project.fs <- rd2d_distance_project_fit_sides(fit.fs, p, clustered)
+  }
 
   if (need.itt) {
-    cov.itt <- rd2d_distance_cov_from_fits(
-      fit.itt, fit.itt, p, clustered, side = "both"
+    cov.itt <- rd2d_distance_cov_from_projects(
+      project.itt, project.itt, side = "both", symmetric = TRUE
     )
   }
   if (need.fs) {
-    cov.fs <- rd2d_distance_cov_from_fits(
-      fit.fs, fit.fs, p, clustered, side = "both"
+    cov.fs <- rd2d_distance_cov_from_projects(
+      project.fs, project.fs, side = "both", symmetric = TRUE
     )
   }
 
@@ -672,8 +723,8 @@ rd2d_distance_fuzzy_cov_tables <- function(fit.itt, fit.fs, p, tau.itt,
   if ("fs" %in% outputs) covs$fs <- cov.fs
 
   if (need.main) {
-    cov.itt.fs <- rd2d_distance_cov_from_fits(
-      fit.itt, fit.fs, p, clustered, side = "both"
+    cov.itt.fs <- rd2d_distance_cov_from_projects(
+      project.itt, project.fs, side = "both"
     )
     cov.fs.itt <- t(cov.itt.fs)
 
@@ -688,23 +739,23 @@ rd2d_distance_fuzzy_cov_tables <- function(fit.itt, fit.fs, p, tau.itt,
   }
 
   if ("itt.0" %in% outputs) {
-    covs$itt.0 <- rd2d_distance_cov_from_fits(
-      fit.itt, fit.itt, p, clustered, side = "0"
+    covs$itt.0 <- rd2d_distance_cov_from_projects(
+      project.itt, project.itt, side = "0", symmetric = TRUE
     )
   }
   if ("itt.1" %in% outputs) {
-    covs$itt.1 <- rd2d_distance_cov_from_fits(
-      fit.itt, fit.itt, p, clustered, side = "1"
+    covs$itt.1 <- rd2d_distance_cov_from_projects(
+      project.itt, project.itt, side = "1", symmetric = TRUE
     )
   }
   if ("fs.0" %in% outputs) {
-    covs$fs.0 <- rd2d_distance_cov_from_fits(
-      fit.fs, fit.fs, p, clustered, side = "0"
+    covs$fs.0 <- rd2d_distance_cov_from_projects(
+      project.fs, project.fs, side = "0", symmetric = TRUE
     )
   }
   if ("fs.1" %in% outputs) {
-    covs$fs.1 <- rd2d_distance_cov_from_fits(
-      fit.fs, fit.fs, p, clustered, side = "1"
+    covs$fs.1 <- rd2d_distance_cov_from_projects(
+      project.fs, project.fs, side = "1", symmetric = TRUE
     )
   }
 

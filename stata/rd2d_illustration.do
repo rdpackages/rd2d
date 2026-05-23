@@ -1,35 +1,70 @@
 ********************************************************************************
 ** RD2D Stata Package
-** Location-based empirical illustration
+** Numerical Illustration
 ********************************************************************************
+
 clear all
 set more off
-set linesize 100
+set linesize 120
+set type double
+version 16.0
 
-set seed 123
-set obs 800
+adopath ++ "."
 
-gen x1 = rnormal()
-gen x2 = rnormal()
-gen d  = x1 >= 0
-gen y  = 3 + 2*x1 + 1.5*x2 + d + rnormal()
+* Load simulated data.
+import delimited using "rd2d_data.csv", clear varnames(1)
+recast double _all
+capture rename x_1 x1
+capture rename x_2 x2
+capture rename Y y
 
-********************************************************************************
-** Sharp location-based design
-********************************************************************************
-rdbw2d y x1 x2 d, b(0 0 0 1) bwcheck(10)
-rd2d  y x1 x2 d, b(0 0 0 1) h(.9) masspoints(off) bwcheck(10)
+* Set illustration inputs.
+local neval = 40
+if "$RD2D_ILLUSTRATION_NEVAL" != "" local neval = real("$RD2D_ILLUSTRATION_NEVAL")
 
-********************************************************************************
-** Fuzzy location-based design
-********************************************************************************
-gen takeup = runiform() < cond(d, .8, .2)
-gen yf = 3 + 2*x1 + 1.5*x2 + 1.5*takeup + rnormal()
+* Generate boundary evaluation points.
+local nhalf = ceil(`neval' / 2)
+local bpoints
+forvalues j = 1/`nhalf' {
+	local b1 = 0
+	local b2 = 40 - (`j' - 1) * 40 / `nhalf'
+	local bpoints `bpoints' `b1' `b2'
+}
+local second = `neval' - `nhalf'
+forvalues j = 1/`second' {
+	local b1 = (`j' - 1) * 56 / `nhalf'
+	local b2 = 0
+	local bpoints `bpoints' `b1' `b2'
+}
 
-rdbw2d yf x1 x2 d, b(0 0 0 1) fuzzy(takeup) bwcheck(10)
-rd2d  yf x1 x2 d, b(0 0 0 1) h(.9) fuzzy(takeup) bwcheck(10)
+* Generate signed distances to each boundary evaluation point.
+forvalues j = 1/`neval' {
+	if `j' <= `nhalf' {
+		local b1 = 0
+		local b2 = 40 - (`j' - 1) * 40 / `nhalf'
+	}
+	else {
+		local k = `j' - `nhalf'
+		local b1 = (`k' - 1) * 56 / `nhalf'
+		local b2 = 0
+	}
+	generate double dist`j' = sqrt((x1 - `b1')^2 + (x2 - `b2')^2) * (2 * assignment - 1)
+}
 
-********************************************************************************
-** Directional derivative example
-********************************************************************************
-rd2d y x1 x2 d, b(0 0) h(.9) tangvec(1 0) p(1) q(1) bwcheck(10)
+* Location-based bandwidth selection.
+rdbw2d y x1 x2 assignment, b(`bpoints') masspoints(off)
+
+* Location-based fuzzy estimation.
+rd2d y x1 x2 assignment, b(`bpoints') fuzzy(fuzzy) masspoints(off)
+
+* Distance-based bandwidth selection.
+rdbw2d_dist y dist1-dist`neval', b(`bpoints') masspoints(off)
+
+* Distance-based sharp estimation.
+rd2d_dist y dist1-dist`neval', b(`bpoints') masspoints(off)
+
+* Distance-based fuzzy bandwidth selection.
+rdbw2d_dist y dist1-dist`neval', b(`bpoints') fuzzy(fuzzy) bwparam(itt) masspoints(off)
+
+* Distance-based fuzzy estimation.
+rd2d_dist y dist1-dist`neval', b(`bpoints') fuzzy(fuzzy) bwparam(itt) masspoints(off)

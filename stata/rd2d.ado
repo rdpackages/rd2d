@@ -2,13 +2,13 @@
 * RD2D STATA PACKAGE -- rd2d
 * Authors: Matias D. Cattaneo, Rocio Titiunik, Ruiqi Rae Yu
 ********************************************************************************
-*!version 0.1.0  2026-05-19
+*!version 0.2.0  2026-05-23
 
 capture program drop rd2d
 program define rd2d, eclass
 	version 16.0
-	syntax varlist(min=4 max=4 numeric) [if] [in], B(numlist min=2) ///
-		[ H(numlist) Fuzzy(varname numeric) DERiv(numlist max=2) ///
+	syntax varlist(min=4 max=4 numeric) [if] [in], B(string asis) ///
+		[ H(string asis) Fuzzy(varname numeric) DERiv(numlist max=2) ///
 		  TANGvec(numlist) P(integer 1) Q(integer -1) ///
 		  KERnel(string) KERNELtype(string) VCE(string) ///
 		  MASSpoints(string) CLuster(varname numeric) Level(real 95) ///
@@ -41,9 +41,14 @@ program define rd2d, eclass
 	if lower("`stdvars'") == "off" local stdflag = 0
 
 	if "$RD2D_MATA_LOADED" != "1" {
-		local rd2d_loadonly 1
-		quietly findfile rd2d_functions.do
-		quietly do "`r(fn)'"
+		tempname rd2d_mlib_ok
+		capture quietly mata: mata mlib index
+		capture quietly mata: st_numscalar("`rd2d_mlib_ok'", rd2d_mlib_loaded())
+		if _rc {
+			local rd2d_loadonly 1
+			quietly findfile rd2d_functions.do
+			quietly do "`r(fn)'"
+		}
 		global RD2D_MATA_LOADED 1
 	}
 
@@ -56,7 +61,8 @@ program define rd2d, eclass
 		"`fuzzy'", "`cluster'", "`touse'", st_local("b"), st_local("h"), ///
 		st_local("deriv"), st_local("tangvec"), `p', `q', "`kernel'", ///
 		"`kerneltype'", "`vce'", `level', "`side'", "`bwselect'", ///
-		`bwcheck', `stdflag')
+		"`bwparam'", "`method'", `bwcheck', "`masspoints'", ///
+		`scaleregul', `scalebiascrct', `stdflag')
 
 	local maincols b1 b2 estimate_p std_err_p estimate_q std_err_q t_value p_value ci_lower ci_upper h01 h02 h11 h12 N_Co N_Tr
 	local bwcols b1 b2 h01 h02 h11 h12 N_Co N_Tr

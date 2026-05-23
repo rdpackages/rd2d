@@ -19,6 +19,9 @@ confidence bands for displayed outputs. Options are \code{"main"},
 \code{"itt.1"}, \code{"fs"}, \code{"fs.0"}, and \code{"fs.1"},
 subject to the sharp/fuzzy design and covariance matrices stored by
 \code{\link{rd2d}}.
+\item \code{repp}: Positive integer. Number of Gaussian simulation
+repetitions used for uniform confidence band and LBATE critical
+values. Default is \code{1000}.
 \item \code{WBATE}: Optional numeric weights for a weighted boundary
 average treatment effect row. The weights must match the full set of
 evaluation points for the selected output. The selected output must
@@ -46,8 +49,8 @@ the output.
 \code{sep[1]} controls spacing for the columns of bandwidths,
 estimation,
 t-statistic, and p-value in the \code{"main"} table.
-\code{sep[2]} controls spacing for the confidence interval
-(confidence bands)
+\code{sep[2]} controls spacing for confidence intervals and
+confidence bands
 in the \code{"main"} table.
 \code{sep[3]} controls spacing for the columns in the
 \code{"bw"} table.
@@ -58,9 +61,9 @@ Default is \code{c(7, 17, 8)}.
 Invisibly returns a list with displayed tables and uniform
 confidence bands requested through \code{cbands}. Each returned estimate
 table has the same columns as the corresponding \code{\link{rd2d}} output,
-with \code{cb.lower} and \code{cb.upper} added only when uniform bands are
-requested. Requested WBATE and LBATE rows are appended to the corresponding
-returned table.
+with pointwise confidence intervals always retained and \code{cb.lower} and
+\code{cb.upper} added only when uniform bands are requested. Requested WBATE
+and LBATE rows are appended to the corresponding returned table.
 }
 \description{
 Summarizes estimation and bandwidth results from a 2D local polynomial

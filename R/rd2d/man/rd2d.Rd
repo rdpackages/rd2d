@@ -24,7 +24,6 @@ rd2d(
   params.other = NULL,
   params.cov = NULL,
   side = c("two", "left", "right"),
-  repp = 1000,
   bwselect = c("mserd", "cerrd", "imserd", "icerrd", "msetwo", "certwo", "imsetwo",
     "icertwo", "user provided"),
   bwparam = c("main", "itt"),
@@ -129,9 +128,6 @@ matrices.}
 \item{side}{Type of confidence interval. Options: \code{"two"} (two-sided,
 default), \code{"left"} (left tail), or \code{"right"} (right tail).}
 
-\item{repp}{Number of repetitions for critical value simulation (used in
-uniform confidence bands). Default is 1000.}
-
 \item{bwselect}{Bandwidth selection strategy. Options:
 \itemize{
 \item \code{"mserd"}. One common MSE-optimal bandwidth selector for the
@@ -230,7 +226,7 @@ point.}
 \item{\code{params.cov}}{List of covariance matrices for aggregate
 inference in \code{\link{summary.rd2d}}. Contains only entries requested
 through \code{params.cov}.}
-\item{\code{cb}}{List with pointwise confidence intervals.}
+\item{\code{ci}}{List with pointwise confidence intervals.}
 \item{\code{pvalues}}{Two-sided p-values based on bias-corrected
 estimates.}
 \item{\code{tvalues}}{t-statistics based on bias-corrected estimates.}
@@ -270,16 +266,16 @@ b <- matrix(c(0, 0, 0, 1), ncol = 2)
 
 # Estimate treatment effect using rd2d
 result <- rd2d(Y, X, assignment, b, params.cov = "main",
-               masspoints = "off", bwcheck = 10, repp = 49)
+               masspoints = "off", bwcheck = 10)
 print(result)
-summary(result, cbands = "main")
+summary(result, cbands = "main", repp = 49)
 
 # Fuzzy RD example
 fuzzy <- as.numeric(runif(n) < ifelse(assignment == 1, 0.8, 0.2))
 Y.fuzzy <- 3 + 2 * X1 + 1.5 * X2 + 1.5 * fuzzy + rnorm(n)
 result.fuzzy <- rd2d(Y.fuzzy, X, assignment, b, fuzzy = fuzzy,
                      bwparam = "main", masspoints = "off",
-                     bwcheck = 10, repp = 49)
+                     bwcheck = 10)
 print(result.fuzzy)
 summary(result.fuzzy, output = "itt")
 }

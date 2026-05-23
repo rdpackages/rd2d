@@ -1,50 +1,41 @@
 ################################################################################
-# rd2d R Package
-# Illustration: plots
+# RD2D Package
+# Plot Illustration
 ################################################################################
 
 rm(list = ls(all = TRUE))
 
-# This script reads rd2d_illustration_results.rds and demonstrates how to build
-# inference plots and heatmaps from the summary.rd2d return tables.
+library(rd2d)
+library(ggplot2)
 
-get_script_dir <- function() {
-  file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
-  if (length(file_arg) > 0) {
-    return(normalizePath(dirname(sub("^--file=", "", file_arg[1])), winslash = "/"))
-  }
-
-  frame_files <- vapply(
-    sys.frames(),
-    function(frame) {
-      if (!is.null(frame$ofile)) frame$ofile else NA_character_
-    },
-    character(1)
+# Generate boundary evaluation points.
+make_eval_grid <- function(neval = 40) {
+  half <- ceiling(neval / 2)
+  rbind(
+    data.frame(
+      x.1 = rep(0, half),
+      x.2 = 40 - (seq_len(half) - 1) * 40 / half
+    ),
+    data.frame(
+      x.1 = (seq_len(neval - half) - 1) * 56 / half,
+      x.2 = rep(0, neval - half)
+    )
   )
-  frame_files <- frame_files[!is.na(frame_files)]
-  if (length(frame_files) > 0) {
-    return(normalizePath(dirname(frame_files[length(frame_files)]), winslash = "/"))
-  }
-
-  normalizePath(getwd(), winslash = "/")
 }
 
-script_dir <- get_script_dir()
-output_dir <- file.path(script_dir, "output")
-plot_dir <- file.path(output_dir, "plots")
-dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
-
-if (!requireNamespace("ggplot2", quietly = TRUE)) {
-  stop("Package ggplot2 is required for this plotting illustration.", call. = FALSE)
+# Generate signed distances to each boundary evaluation point.
+make_signed_distances <- function(X, eval, assignment) {
+  distance <- sapply(seq_len(nrow(eval)), function(j) {
+    sqrt((X$x.1 - eval$x.1[j])^2 + (X$x.2 - eval$x.2[j])^2)
+  })
+  distance * matrix(
+    2 * assignment - 1,
+    nrow = nrow(distance),
+    ncol = ncol(distance)
+  )
 }
 
-results_file <- file.path(output_dir, "rd2d_illustration_results.rds")
-if (!file.exists(results_file)) {
-  stop("Run R/rd2d_illustration.R before R/rd2d_plot.R.", call. = FALSE)
-}
-
-obj <- readRDS(results_file)
-
+# Label each estimand for plots.
 label_for_output <- function(output) {
   switch(
     output,
@@ -56,15 +47,24 @@ label_for_output <- function(output) {
   )
 }
 
+# Keep boundary rows separate from aggregate rows.
 point_rows <- function(table) {
   table[!(rownames(table) %in% c("WBATE", "LBATE")), , drop = FALSE]
 }
 
+# Keep WBATE and LBATE rows for reference lines.
 aggregate_rows <- function(table) {
   table[rownames(table) %in% c("WBATE", "LBATE"), , drop = FALSE]
 }
 
-make_inference_plot <- function(summary_object, output, file) {
+# Compute summary tables without printing them.
+summary_for_plot <- function(...) {
+  invisible(utils::capture.output(out <- summary(...)))
+  out
+}
+
+# Plot point estimates, CIs, and CBs.
+make_inference_plot <- function(summary_object, output) {
   table <- summary_object$tables[[output]]
   points <- point_rows(table)
   aggregates <- aggregate_rows(table)
@@ -88,9 +88,20 @@ make_inference_plot <- function(summary_object, output, file) {
       width = 0,
       linewidth = 0.35
     ) +
-    ggplot2::geom_point(ggplot2::aes(color = label_for_output(output)), size = 1.9) +
-    ggplot2::geom_hline(yintercept = 0, linewidth = 0.3, color = "grey45") +
-    ggplot2::geom_vline(xintercept = 21, linewidth = 0.35, color = "grey80") +
+    ggplot2::geom_point(
+      ggplot2::aes(color = label_for_output(output)),
+      size = 1.9
+    ) +
+    ggplot2::geom_hline(
+      yintercept = 0,
+      linewidth = 0.3,
+      color = "grey45"
+    ) +
+    ggplot2::geom_vline(
+      xintercept = 21,
+      linewidth = 0.35,
+      color = "grey80"
+    ) +
     ggplot2::scale_color_manual(
       values = c(
         "Fuzzy" = "#1b6ca8",
@@ -102,7 +113,10 @@ make_inference_plot <- function(summary_object, output, file) {
       breaks = c(label_for_output(output), "95% CI"),
       name = NULL
     ) +
-    ggplot2::scale_fill_manual(values = c("95% CB" = "#1b6ca8"), name = NULL) +
+    ggplot2::scale_fill_manual(
+      values = c("95% CB" = "#1b6ca8"),
+      name = NULL
+    ) +
     ggplot2::labs(
       x = "Boundary evaluation point",
       y = label_for_output(output)
@@ -129,15 +143,17 @@ make_inference_plot <- function(summary_object, output, file) {
         color = "grey30",
         linewidth = 0.35
       ) +
-      ggplot2::scale_linetype_manual(values = c(WBATE = "dashed", LBATE = "dotdash"),
-                                     name = NULL)
+      ggplot2::scale_linetype_manual(
+        values = c(WBATE = "dashed", LBATE = "dotdash"),
+        name = NULL
+      )
   }
 
-  ggplot2::ggsave(file.path(plot_dir, file), p, width = 6.5, height = 4.2)
   p
 }
 
-make_effect_heatmap <- function(summary_object, output, file) {
+# Plot point estimates over the boundary.
+make_effect_heatmap <- function(summary_object, output) {
   table <- point_rows(summary_object$tables[[output]])
   plot_dat <- data.frame(
     b1 = table$b1,
@@ -146,7 +162,7 @@ make_effect_heatmap <- function(summary_object, output, file) {
     estimate = table$estimate.p
   )
 
-  p <- ggplot2::ggplot(plot_dat, ggplot2::aes(x = b1, y = b2)) +
+  ggplot2::ggplot(plot_dat, ggplot2::aes(x = b1, y = b2)) +
     ggplot2::geom_tile(
       ggplot2::aes(fill = estimate),
       width = 2.7,
@@ -170,12 +186,10 @@ make_effect_heatmap <- function(summary_object, output, file) {
       legend.position = c(0.82, 0.82),
       legend.background = ggplot2::element_rect(fill = "white", color = NA)
     )
-
-  ggplot2::ggsave(file.path(plot_dir, file), p, width = 5.6, height = 4.8)
-  p
 }
 
-make_pvalue_heatmap <- function(summary_object, output, file) {
+# Plot p-values over the boundary.
+make_pvalue_heatmap <- function(summary_object, output) {
   table <- point_rows(summary_object$tables[[output]])
   plot_dat <- data.frame(
     b1 = table$b1,
@@ -189,7 +203,7 @@ make_pvalue_heatmap <- function(summary_object, output, file) {
     labels = c("0.000", "< 0.010", "< 0.050", "< 0.100", ">= 0.100")
   )
 
-  p <- ggplot2::ggplot(plot_dat, ggplot2::aes(x = b1, y = b2)) +
+  ggplot2::ggplot(plot_dat, ggplot2::aes(x = b1, y = b2)) +
     ggplot2::geom_tile(
       ggplot2::aes(fill = p.group),
       width = 2.7,
@@ -217,12 +231,11 @@ make_pvalue_heatmap <- function(summary_object, output, file) {
       legend.position = c(0.82, 0.82),
       legend.background = ggplot2::element_rect(fill = "white", color = NA)
     )
-
-  ggplot2::ggsave(file.path(plot_dir, file), p, width = 5.6, height = 4.8)
-  p
 }
 
-make_distance_inference_plot <- function(summary_object, output = "main", file,
+# Plot distance-based point estimates, CIs, and CBs.
+make_distance_inference_plot <- function(summary_object,
+                                         output = "main",
                                          y_label = "distance-based effect",
                                          color = "#7b3294") {
   table <- point_rows(summary_object$tables[[output]])
@@ -235,7 +248,7 @@ make_distance_inference_plot <- function(summary_object, output = "main", file,
     cb.upper = table$cb.upper
   )
 
-  p <- ggplot2::ggplot(plot_dat, ggplot2::aes(x = index, y = estimate)) +
+  ggplot2::ggplot(plot_dat, ggplot2::aes(x = index, y = estimate)) +
     ggplot2::geom_ribbon(
       ggplot2::aes(ymin = cb.lower, ymax = cb.upper),
       fill = color,
@@ -248,51 +261,118 @@ make_distance_inference_plot <- function(summary_object, output = "main", file,
       linewidth = 0.35
     ) +
     ggplot2::geom_point(color = color, size = 1.9) +
-    ggplot2::geom_hline(yintercept = 0, linewidth = 0.3, color = "grey45") +
-    ggplot2::geom_vline(xintercept = 21, linewidth = 0.35, color = "grey80") +
+    ggplot2::geom_hline(
+      yintercept = 0,
+      linewidth = 0.3,
+      color = "grey45"
+    ) +
+    ggplot2::geom_vline(
+      xintercept = 21,
+      linewidth = 0.35,
+      color = "grey80"
+    ) +
     ggplot2::labs(x = "Boundary evaluation point", y = y_label) +
     ggplot2::theme_minimal(base_size = 11) +
     ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
-
-  ggplot2::ggsave(file.path(plot_dir, file), p, width = 6.5, height = 4.2)
-  p
 }
 
+# Load simulated data.
+dat <- read.csv("rd2d_data.csv")
+X <- dat[, c("x.1", "x.2")]
+Y <- dat$Y
+A <- dat$assignment
+D <- dat$fuzzy
+
+# Set plot inputs.
+neval <- as.integer(Sys.getenv("RD2D_ILLUSTRATION_NEVAL", "40"))
+repp <- as.integer(Sys.getenv("RD2D_ILLUSTRATION_REPP", "499"))
+eval <- make_eval_grid(neval)
+distance <- make_signed_distances(X, eval, A)
+wbate_weights <- rep(1, neval)
+
+# Location-based fuzzy estimation.
+fit_location <- rd2d(
+  Y, X, A, eval,
+  fuzzy = D,
+  params.other = "itt.0",
+  params.cov = c("main", "itt", "fs", "itt.0"),
+  masspoints = "off"
+)
+
+# Distance-based sharp estimation.
+fit_distance <- rd2d.distance(
+  Y,
+  distance = distance,
+  b = eval,
+  masspoints = "off",
+  cbands = TRUE
+)
+
+# Distance-based fuzzy estimation.
+fit_distance_fuzzy <- rd2d.distance(
+  Y, distance = distance, b = eval,
+  fuzzy = D, bwparam = "itt",
+  params.cov = c("main", "itt", "fs"),
+  masspoints = "off"
+)
+
+# Compute summaries used by the plots.
+summaries <- list(
+  main = summary_for_plot(
+    fit_location, output = "main", cbands = "main",
+    WBATE = wbate_weights, LBATE = TRUE, repp = repp
+  ),
+  itt = summary_for_plot(
+    fit_location, output = "itt", cbands = "itt",
+    WBATE = wbate_weights, LBATE = TRUE, repp = repp
+  ),
+  fs = summary_for_plot(
+    fit_location, output = "fs", cbands = "fs",
+    WBATE = wbate_weights, LBATE = TRUE, repp = repp
+  ),
+  itt.0 = summary_for_plot(
+    fit_location, output = "itt.0", cbands = "itt.0",
+    WBATE = wbate_weights, LBATE = TRUE, repp = repp
+  ),
+  distance_sharp = summary_for_plot(
+    fit_distance, output = "main", cbands = "main", repp = repp
+  ),
+  distance_fuzzy = summary_for_plot(
+    fit_distance_fuzzy, output = "main", cbands = "main",
+    WBATE = wbate_weights, LBATE = TRUE, repp = repp
+  )
+)
+
+# Build plots.
 plots <- list()
 
 for (output in c("main", "itt", "fs", "itt.0")) {
   prefix <- if (output == "main") "fuzzy" else gsub("\\.", "", output)
   plots[[paste0(prefix, "_inference")]] <- make_inference_plot(
-    obj$summaries[[output]],
-    output,
-    sprintf("rd2d_illustration_%s_inference.png", prefix)
+    summaries[[output]], output
   )
   plots[[paste0(prefix, "_heatmap")]] <- make_effect_heatmap(
-    obj$summaries[[output]],
-    output,
-    sprintf("rd2d_illustration_%s_heatmap.png", prefix)
+    summaries[[output]], output
   )
   plots[[paste0(prefix, "_pvalue_heatmap")]] <- make_pvalue_heatmap(
-    obj$summaries[[output]],
-    output,
-    sprintf("rd2d_illustration_%s_heatmap_pvalue.png", prefix)
+    summaries[[output]], output
   )
 }
 
 plots$distance_sharp_inference <- make_distance_inference_plot(
-  obj$summaries$distance_sharp,
+  summaries$distance_sharp,
   output = "main",
-  file = "rd2d_illustration_distance_sharp_inference.png",
   y_label = "distance-based sharp effect",
   color = "#7b3294"
 )
 
 plots$distance_fuzzy_inference <- make_distance_inference_plot(
-  obj$summaries$distance_fuzzy,
+  summaries$distance_fuzzy,
   output = "main",
-  file = "rd2d_illustration_distance_fuzzy_inference.png",
   y_label = "distance-based fuzzy effect",
   color = "#a6611a"
 )
 
-cat(sprintf("Illustration plots saved to: %s\n", plot_dir))
+if (interactive()) {
+  invisible(lapply(plots, print))
+}

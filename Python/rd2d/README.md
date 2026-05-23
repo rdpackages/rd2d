@@ -19,9 +19,10 @@ from rd2d import rd2d, rdbw2d, rd2d_dist, rdbw2d_dist, summary
 - `rdbw2d_dist()` and `rdbw2d_distance()`: distance-based bandwidth selection.
 - `summary()`: summary tables with optional uniform bands, WBATE, and LBATE.
 
-The sibling scripts `../rd2d_illustration.py` and `../rd2d_plot.py` provide a
-self-contained simulation, estimation, and plotting workflow. Generated files
-are written under `../output/`.
+In the source repository, the sibling scripts `../rd2d_illustration.py` and
+`../rd2d_plot.py` read `../rd2d_data.csv` and run the same dataset-based
+illustration workflow as the R and Stata examples. They do not create an
+`output/` folder or save fitted objects, tables, or plot files.
 
 ## Installation
 
@@ -58,7 +59,7 @@ b = np.array([[0.0, 0.0], [0.0, 1.0]])
 
 fit = rd2d(y, x, assignment, b, h=0.9, params_cov="main")
 fit.main
-fit.summary(cbands="main").tables["main"]
+fit.summary(cbands="main", repp=999).tables["main"]
 ```
 
 For distance-based designs, pass one signed-distance column per evaluation

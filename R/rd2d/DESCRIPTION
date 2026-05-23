@@ -1,7 +1,7 @@
 Package: rd2d
 Type: Package
 Title: Estimation and Inference for Boundary Discontinuity Designs
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: c(
     person(given = "Matias D.", family = "Cattaneo", email = "matias.d.cattaneo@gmail.com", role = c("aut", "cre")),
     person(given = "Rocio", family = "Titiunik", email = "rocio.titiunik@gmail.com", role = "aut"),

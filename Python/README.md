@@ -5,19 +5,19 @@ material.
 
 - `rd2d/` is the Python package source root. It contains `pyproject.toml`, the
   importable `rd2d/` package, and tests.
-- `rd2d_illustration.py` simulates one fuzzy boundary-discontinuity dataset and
-  runs location- and distance-based examples.
-- `rd2d_plot.py` reads the saved illustration objects and builds inference
-  plots, effect heatmaps, and p-value heatmaps.
-- `output/` contains generated data, fitted illustration objects, and figures
-  from the illustration scripts. This directory is ignored by git.
+- `rd2d_data.csv` is the simulated SPP-calibrated cubic fuzzy BD dataset used
+  by the illustration scripts.
+- `rd2d_illustration.py` reads `rd2d_data.csv` and runs location- and
+  distance-based examples.
+- `rd2d_plot.py` reads `rd2d_data.csv`, recomputes the needed summaries, and
+  builds inference plots, effect heatmaps, and p-value heatmaps.
 
 The illustration workflow is:
 
 ```sh
-python Python/rd2d_illustration.py
-python Python/rd2d_plot.py
+python rd2d_illustration.py
+python rd2d_plot.py
 ```
 
-The scripts can be run from either the repository root or this `Python/`
-directory.
+Run the scripts from this directory. They use the current working directory and
+do not create an `output/` folder or save fitted objects, tables, or plot files.
