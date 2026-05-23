@@ -1,4 +1,4 @@
-# rd2d for Python
+# rd2d
 
 `rd2d` provides local polynomial estimation, robust bias-corrected inference,
 and bandwidth helpers for boundary discontinuity designs with bivariate running

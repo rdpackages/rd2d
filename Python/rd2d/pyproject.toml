@@ -4,16 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rd2d"
-version = "0.2.0"
+version = "0.2.0.post1"
 description = "Local polynomial methods for boundary discontinuity designs"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "GPL-3.0-only"
 license-files = ["LICENSE.md"]
 authors = [
-  { name = "Matias D. Cattaneo", email = "matias.d.cattaneo@gmail.com" },
+  { name = "Matias D. Cattaneo" },
   { name = "Rocio Titiunik" },
   { name = "Ruiqi Rae Yu" }
+]
+maintainers = [
+  { name = "Matias D. Cattaneo", email = "matias.d.cattaneo@gmail.com" }
 ]
 keywords = [
   "boundary discontinuity",

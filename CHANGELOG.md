@@ -2,6 +2,12 @@
 
 ## 2026-05-23
 
+### Python Package Metadata
+
+- Released Python package metadata as `0.2.0.post1` so PyPI lists all authors
+  by name and records Matias D. Cattaneo as the maintainer.
+- Simplified the PyPI README title from `rd2d for Python` to `rd2d`.
+
 ### Stata Package Organization
 
 - Bumped R, Python, and Stata package metadata to version `0.2.0` for
