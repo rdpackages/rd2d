@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from rd2d import (
     rdbw2d,
@@ -22,6 +23,13 @@ def make_location_data(n=350, seed=101):
     y_fuzzy = 1 + x1 + 0.5 * x2 + 1.4 * fuzzy + rng.normal(scale=0.5, size=n)
     b = np.array([[0.0, -0.4], [0.0, 0.0], [0.0, 0.4]])
     return y, y_fuzzy, np.column_stack([x1, x2]), assignment, fuzzy, b
+
+
+def make_covariates(x, seed=505):
+    rng = np.random.default_rng(seed)
+    z1 = 0.4 * x[:, 0] - 0.2 * x[:, 1] + rng.normal(scale=0.4, size=x.shape[0])
+    z2 = rng.normal(size=x.shape[0])
+    return np.column_stack([z1, z2])
 
 
 def make_distance_data(n=350, seed=202):
@@ -139,3 +147,43 @@ def test_distance_fuzzy_summary():
     assert "cb" not in fit
     assert {"ci.lower", "ci.upper", "cb.lower", "cb.upper"}.issubset(summ.tables["main"].columns)
     assert list(summ.tables["main"].tail(2).index) == ["WBATE", "LBATE"]
+
+
+def test_location_fitmethod_and_covariates():
+    y, _, x, z, _, b = make_location_data(seed=515)
+    covs = make_covariates(x)
+    fit_joint = rd2d(y, x, z, b, h=0.75, vce="hc0", masspoints="off", fitmethod="joint")
+    fit_sep = rd2d(y, x, z, b, h=0.75, vce="hc0", masspoints="off", fitmethod="separate")
+    np.testing.assert_allclose(fit_joint.main["estimate.p"], fit_sep.main["estimate.p"], rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(fit_joint.main["std.err.q"], fit_sep.main["std.err.q"], rtol=1e-12, atol=1e-12)
+
+    fit_cov = rd2d(y, x, z, b, h=0.75, covs_eff=covs, masspoints="off")
+    assert fit_cov.opt["covs.eff"] is True
+    assert fit_cov.opt["N.covs.eff"] == 2
+    assert fit_cov.opt["fitmethod"] == "joint"
+    assert np.all(np.isfinite(fit_cov.main["estimate.p"]))
+
+    with pytest.warns(RuntimeWarning, match="rank deficient"):
+        fit_rank = rd2d(y, x, z, b, h=0.75, covs_eff=np.column_stack([covs[:, 0], covs[:, 0]]), masspoints="off")
+    assert fit_rank.opt["covs.rank.deficient"] is True
+    assert fit_rank.opt["N.covs.used"] == 1
+
+
+def test_distance_fitmethod_and_covariates():
+    y, _, distance, _ = make_distance_data(seed=616)
+    b = np.array([[0.0, 0.0]])
+    rng = np.random.default_rng(717)
+    covs = np.column_stack([rng.normal(size=len(y)), rng.normal(size=len(y))])
+    fit_joint = rd2d_distance(y, distance, h=0.5, b=b, vce="hc0", fitmethod="joint", cbands=False)
+    fit_sep = rd2d_distance(y, distance, h=0.5, b=b, vce="hc0", fitmethod="separate", cbands=False)
+    np.testing.assert_allclose(fit_joint.main["estimate.q"], fit_sep.main["estimate.q"], rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(fit_joint.main["std.err.q"], fit_sep.main["std.err.q"], rtol=1e-12, atol=1e-12)
+
+    fit_cov = rd2d_distance(y, distance, h=0.5, b=b, covs_eff=covs, cbands=False)
+    assert fit_cov.opt["covs.eff"] is True
+    assert fit_cov.opt["N.covs.eff"] == 2
+    assert np.all(np.isfinite(fit_cov.main["estimate.p"]))
+
+    bw_cov = rdbw2d_distance(y, distance, b=b, covs_eff=covs, masspoints="off")
+    assert bw_cov.opt["covs.eff"] is True
+    assert list(bw_cov.bws.columns) == ["b1", "b2", "h0", "h1", "N.Co", "N.Tr"]

@@ -20,6 +20,10 @@ rd2d(
   vce = c("hc1", "hc0", "hc2", "hc3"),
   masspoints = c("check", "adjust", "off"),
   cluster = NULL,
+  covs.eff = NULL,
+  covs.drop = TRUE,
+  covs.tol = 1e-12,
+  fitmethod = c("joint", "separate"),
   level = 95,
   params.other = NULL,
   params.cov = NULL,
@@ -107,6 +111,26 @@ number of unique observations within each side of the cutoff.
 
 \item{cluster}{Cluster ID variable used for cluster-robust variance estimation
 with degrees-of-freedom weights. Default is \code{cluster = NULL}.}
+
+\item{covs.eff}{Optional pre-intervention covariates used for efficiency
+adjustment. Must be a numeric vector, matrix, or data frame with the same
+number of rows as \code{Y}. Covariate coefficients are constrained to be
+common across treatment sides.}
+
+\item{covs.drop}{Logical. If \code{TRUE} (default), redundant covariate
+columns are dropped from the common covariate-adjustment solve when the
+residualized covariate matrix is rank deficient. If \code{FALSE}, a
+generalized inverse is used instead.}
+
+\item{covs.tol}{Positive numeric tolerance used to detect rank deficiency
+in residualized \code{covs.eff}. Default is \code{1e-12}.}
+
+\item{fitmethod}{Estimation, inference, and automatic bandwidth-selection
+method. \code{"joint"} (default) uses treatment-side interacted local
+polynomial fits with joint variance corrections, including joint HC1
+degrees-of-freedom factors and, when \code{cluster} is supplied, joint
+cluster-score aggregation across treatment sides. \code{"separate"} uses
+the legacy side-specific fitting and covariance calculations.}
 
 \item{level}{Nominal confidence level for intervals/bands, between 0 and
 100 (default is 95).}

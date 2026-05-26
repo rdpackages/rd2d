@@ -96,6 +96,20 @@
 #'   \item{\code{"off"}}{Ignore mass points completely.}
 #' }
 #' @param cluster Cluster ID variable used for cluster-robust variance estimation with degrees-of-freedom weights. Default is \code{cluster = NULL}.
+#' @param covs.eff Optional pre-intervention covariates used for efficiency
+#' adjustment. Must be a numeric vector, matrix, or data frame with the same
+#' number of rows as \code{Y}. Covariate coefficients are constrained to be
+#' common across treatment sides.
+#' @param covs.drop Logical. If \code{TRUE} (default), redundant covariate
+#' columns are dropped from the common covariate-adjustment solve when the
+#' residualized covariate matrix is rank deficient. If \code{FALSE}, a
+#' generalized inverse is used instead.
+#' @param covs.tol Positive numeric tolerance used to detect rank deficiency
+#' in residualized \code{covs.eff}. Default is \code{1e-12}.
+#' @param fitmethod Estimation, inference, and automatic bandwidth-selection
+#' method. \code{"joint"} (default) uses treatment-side interacted local
+#' polynomial fits with joint variance corrections. \code{"separate"} uses
+#' the legacy side-specific fitting and covariance calculations.
 #' @param scaleregul Scaling factor for the regularization term in bandwidth selection. Default is \code{1}.
 #' @param cqt Constant controlling subsample fraction for initial bias estimation. Default is \code{0.5}.
 #' @param fuzzy Optional treatment receipt/status variable for fuzzy RD designs. If
@@ -228,7 +242,10 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
                       params.other = NULL, params.cov = NULL,
                       vce = c("hc1","hc0","hc2","hc3"),
                       bwcheck = 50 + p + 1, masspoints = c("check","adjust","off"),
-                      cluster = NULL, scaleregul = 1, cqt = 0.5, fuzzy = NULL){
+                      cluster = NULL, covs.eff = NULL,
+                      covs.drop = TRUE, covs.tol = 1e-12,
+                      fitmethod = c("joint", "separate"),
+                      scaleregul = 1, cqt = 0.5, fuzzy = NULL){
 
   # Input error handling
 
@@ -236,6 +253,7 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
   kernel <- match.arg(kernel)
   vce <- match.arg(vce)
   masspoints <- match.arg(masspoints)
+  fitmethod <- match.arg(fitmethod)
   side <- match.arg(side)
   bwselect.base <- rd2d_bwselect_base(bwselect)
   bwselect.cer <- rd2d_bwselect_is_cer(bwselect)
@@ -248,32 +266,53 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
 
   # Check Errors
 
-  exit=0
+  exit <- 0
+  errors <- character(0)
+  rd2d_add_error <- function(message) {
+    errors <<- c(errors, paste(message, collapse = " "))
+    exit <<- 1
+    invisible(NULL)
+  }
 
-  if (length(Y) != nrow(distance_mat)) {
-    print("Y and rows of distance must have the same length")
-    exit <- 1
+  valid.distance <- is.matrix(distance_mat) || is.data.frame(distance_mat)
+  if (!valid.distance) {
+    rd2d_add_error("distance must be a matrix or data frame")
+  } else if (length(Y) != nrow(distance_mat)) {
+    rd2d_add_error("Y and rows of distance must have the same length")
   }
 
   if (is.fuzzy && length(fuzzy) != length(Y)) {
-    print("fuzzy must have the same length as Y")
-    exit <- 1
+    rd2d_add_error("fuzzy must have the same length as Y")
   }
 
   if (is.fuzzy && !(is.logical(fuzzy) || is.numeric(fuzzy))) {
-    print("fuzzy must be a logical or numeric vector")
-    exit <- 1
+    rd2d_add_error("fuzzy must be a logical or numeric vector")
+  }
+
+  if (!is.null(cluster) && length(cluster) != length(Y)) {
+    rd2d_add_error("cluster must have the same length as Y")
+  }
+
+  cov.prep <- tryCatch(
+    rd2d_prepare_cov_eff(covs.eff, length(Y)),
+    error = function(e) {
+      rd2d_add_error(conditionMessage(e))
+      list(matrix = NULL, names = NULL)
+    }
+  )
+  rank.option.errors <- rd2d_validate_covs_rank_options(covs.drop, covs.tol)
+  if (length(rank.option.errors) > 0) {
+    for (err in rank.option.errors) rd2d_add_error(err)
   }
 
   if (kernel!="gau" & kernel!="gaussian" & kernel!="uni" & kernel!="uniform" & kernel!="tri" & kernel!="triangular" & kernel!="epa" & kernel!="epanechnikov" & kernel!="" ){
-    print("kernel incorrectly specified")
-    exit <- 1
+    rd2d_add_error("kernel incorrectly specified")
   }
 
   if (!is.null(b)){
-    if (nrow(b) != ncol(distance_mat) || ncol(b) != 2){
-      print("b must have 2 columns and the same number of rows as distance's number of columns")
-      exit <- 1
+    if (!(is.matrix(b) || is.data.frame(b)) ||
+        !valid.distance || nrow(b) != ncol(distance_mat) || ncol(b) != 2){
+      rd2d_add_error("b must have 2 columns and the same number of rows as distance's number of columns")
     }
   }
 
@@ -284,8 +323,7 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
     is.finite(p) && p >= 0 &&
     abs(p - round(p)) < sqrt(.Machine$double.eps)
   if (!valid.p) {
-    print("p must be a nonnegative integer")
-    exit <- 1
+    rd2d_add_error("p must be a nonnegative integer")
   } else {
     p <- as.integer(round(p))
   }
@@ -302,40 +340,34 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
     is.finite(q) && q >= 0 &&
     abs(q - round(q)) < sqrt(.Machine$double.eps)
   if (!valid.q) {
-    print("q must be a nonnegative integer")
-    exit <- 1
+    rd2d_add_error("q must be a nonnegative integer")
   } else {
     q <- as.integer(round(q))
   }
 
   if (valid.p && valid.q && q < p) {
-    print("q must be greater than or equal to p")
-    exit <- 1
+    rd2d_add_error("q must be greater than or equal to p")
   }
 
   # level must be numeric in (0, 100)
   if (!is.numeric(level) || level <= 0 || level >= 100) {
-    print("level must be a numeric value between 0 and 100")
-    exit <- 1
+    rd2d_add_error("level must be a numeric value between 0 and 100")
   }
 
   # h must be either a positive scalar or a matrix/data.frame with same rows as b and 4 columns
   if (!is.null(h)) {
     if (length(h) == 1) {
       if (!is.numeric(h) || h <= 0) {
-        print("If h is a scalar, it must be a positive numeric value")
-        exit <- 1
+        rd2d_add_error("If h is a scalar, it must be a positive numeric value")
       }
     } else if (!(is.matrix(h) || is.data.frame(h)) ||
-               nrow(h) != ncol(distance_mat) || ncol(h) != 2) {
-      print("If h is not a scalar, it must be a matrix or data frame with the same number of rows as b and 2 columns")
-      exit <- 1
+               !valid.distance || nrow(h) != ncol(distance_mat) || ncol(h) != 2) {
+      rd2d_add_error("If h is not a scalar, it must be a matrix or data frame with the same number of rows as b and 2 columns")
     }
   }
 
   if (is.null(h) & bwselect == "user provided"){
-    exit <- 1
-    print("Please provide bandwidths.")
+    rd2d_add_error("Please provide bandwidths.")
   }
 
   allowed.params.other <- c(
@@ -348,11 +380,9 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
   if (is.null(params.other)) {
     params.other <- character(0)
   } else if (!is.character(params.other) || any(is.na(params.other))) {
-    print("params.other must be NULL or a character vector")
-    exit <- 1
+    rd2d_add_error("params.other must be NULL or a character vector")
   } else if (!all(params.other %in% allowed.params.other)) {
-    print(paste("params.other must contain only:", paste(allowed.params.other, collapse = ", ")))
-    exit <- 1
+    rd2d_add_error(paste("params.other must contain only:", paste(allowed.params.other, collapse = ", ")))
   } else {
     params.other <- unique(params.other)
   }
@@ -360,11 +390,9 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
   if (is.null(params.cov)) {
     params.cov <- character(0)
   } else if (!is.character(params.cov) || any(is.na(params.cov))) {
-    print("params.cov must be NULL or a character vector")
-    exit <- 1
+    rd2d_add_error("params.cov must be NULL or a character vector")
   } else if (!all(params.cov %in% allowed.params.cov)) {
-    print(paste("params.cov must contain only:", paste(allowed.params.cov, collapse = ", ")))
-    exit <- 1
+    rd2d_add_error(paste("params.cov must contain only:", paste(allowed.params.cov, collapse = ", ")))
   } else {
     params.cov <- unique(params.cov)
   }
@@ -374,35 +402,30 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
     if (is.fuzzy) {
       invalid.design.params <- intersect(params.other, c("main.0", "main.1"))
       if (length(invalid.design.params) > 0) {
-        print("main.0 and main.1 are available only for sharp rd2d.distance fits")
-        exit <- 1
+        rd2d_add_error("main.0 and main.1 are available only for sharp rd2d.distance fits")
       }
       invalid.cov <- intersect(params.cov, c("main.0", "main.1"))
       if (length(invalid.cov) > 0) {
-        print("main.0 and main.1 covariance matrices are available only for sharp rd2d.distance fits")
-        exit <- 1
+        rd2d_add_error("main.0 and main.1 covariance matrices are available only for sharp rd2d.distance fits")
       }
       missing.side.cov <- setdiff(
         intersect(params.cov, c("itt.0", "itt.1", "fs.0", "fs.1")),
         params.other
       )
       if (length(missing.side.cov) > 0) {
-        print(paste(
+        rd2d_add_error(paste(
           "params.cov side outputs must also be requested in params.other:",
           paste(missing.side.cov, collapse = ", ")
         ))
-        exit <- 1
       }
     } else {
       invalid.design.params <- setdiff(params.other, c("main.0", "main.1"))
       if (length(invalid.design.params) > 0) {
-        print("itt.0, itt.1, fs.0, and fs.1 are available only for fuzzy rd2d.distance fits")
-        exit <- 1
+        rd2d_add_error("itt.0, itt.1, fs.0, and fs.1 are available only for fuzzy rd2d.distance fits")
       }
       invalid.cov <- setdiff(params.cov, c("main", "main.0", "main.1"))
       if (length(invalid.cov) > 0) {
-        print("itt, itt.0, itt.1, fs, fs.0, and fs.1 covariance matrices are available only for fuzzy rd2d.distance fits")
-        exit <- 1
+        rd2d_add_error("itt, itt.0, itt.1, fs, fs.0, and fs.1 covariance matrices are available only for fuzzy rd2d.distance fits")
       }
     }
   }
@@ -412,7 +435,7 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
     vce <- "hc1"
   }
 
-  if (exit>0) stop()
+  if (exit>0) rd2d_stop_errors(errors)
 
   ############################ Data Preparation ################################
 
@@ -439,15 +462,20 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
 
   na.ok <- complete.cases(distance_mat) & complete.cases(Y)
   if (is.fuzzy) na.ok <- na.ok & complete.cases(fuzzy)
+  if (!is.null(cov.prep$matrix)) na.ok <- na.ok & complete.cases(cov.prep$matrix)
   distance_mat <- distance_mat[na.ok,,drop = FALSE]
   Y <- Y[na.ok]
   if (is.fuzzy) fuzzy <- as.numeric(fuzzy[na.ok])
   cluster <- cluster[na.ok]
+  covs.mat <- if (!is.null(cov.prep$matrix)) cov.prep$matrix[na.ok,,drop = FALSE] else NULL
   d <- (distance_mat[,1] >= 0)
 
   N <- length(Y)
   N.1 <- sum(d)
   N.0 <- N - N.1
+  clustered <- !is.null(cluster)
+  rd2d_covs_rank_begin(colnames(covs.mat), covs.drop, covs.tol)
+  on.exit(rd2d_covs_rank_end(), add = TRUE)
 
   kernel   <- tolower(kernel)
 
@@ -465,6 +493,8 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
       bwselect = bwselect, bwparam = bwparam, vce = vce,
       bwcheck = bwcheck, masspoints = masspoints, cluster = cluster,
       scaleregul = scaleregul, cqt = cqt,
+      covs.eff = covs.mat, covs.drop = covs.drop, covs.tol = covs.tol,
+      fitmethod = fitmethod,
       fuzzy = if (is.fuzzy) fuzzy else NULL
     )
     bws <- bws$bws
@@ -489,13 +519,15 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
 
   ###################### Point estimation and inference ########################
 
-  need.p.cov.cache <- length(params.cov) > 0 && (q == p || (kink.unknown[2] && q > p))
+  need.p.cov.cache <- (length(params.cov) > 0 &&
+    (q == p || (kink.unknown[2] && q > p))) ||
+    (clustered && fitmethod == "joint")
 
   if (!is.fuzzy) {
     distancefit.p <- rd2d_distance_fit(
       Y = Y, distance = distance_mat, h = hfull, p = p, b = b, kernel = kernel,
       vce = vce, bwcheck = bwcheck, masspoints = masspoints, cluster = cluster,
-      cbands = need.p.cov.cache
+      cbands = need.p.cov.cache, fitmethod = fitmethod, covs.eff = covs.mat
     )
     masspoint.counts <- list(
       M.vec = distancefit.p$M.vec,
@@ -505,18 +537,24 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
     estimate.p <- distancefit.p$Estimate
     tau.hat.p <- estimate.p$mu1 - estimate.p$mu0
     se.hat.p <- sqrt(estimate.p$se0^2 + estimate.p$se1^2)
+    if (clustered && fitmethod == "joint") {
+      cov.p.main <- rd2d_distance_cov_from_fits(
+        distancefit.p, distancefit.p, p, clustered = TRUE, side = "both"
+      )
+      se.hat.p <- sqrt(diag(cov.p.main))
+    }
     eN0.p <- estimate.p$N0
     eN1.p <- estimate.p$N1
   } else {
     distancefit.Y.p <- rd2d_distance_fit(
       Y = Y, distance = distance_mat, h = hfull, p = p, b = b, kernel = kernel,
       vce = vce, bwcheck = bwcheck, masspoints = masspoints, cluster = cluster,
-      cbands = TRUE
+      cbands = TRUE, fitmethod = fitmethod, covs.eff = covs.mat
     )
     distancefit.fs.p <- rd2d_distance_fit(
       Y = fuzzy, distance = distance_mat, h = hfull, p = p, b = b, kernel = kernel,
       vce = vce, bwcheck = bwcheck, masspoints = masspoints, cluster = cluster,
-      cbands = TRUE,
+      cbands = TRUE, fitmethod = fitmethod, covs.eff = covs.mat,
       masspoint.counts = list(
         M.vec = distancefit.Y.p$M.vec,
         M.0.vec = distancefit.Y.p$M.0.vec,
@@ -540,7 +578,8 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
     tau.hat.p[valid.p] <- tau.itt.p[valid.p] / tau.fs.p[valid.p]
     cov.p <- rd2d_distance_fuzzy_cov_tables(
       distancefit.Y.p, distancefit.fs.p, p, tau.itt.p, tau.fs.p,
-      outputs = "main", clustered = !is.null(cluster), denom.tol = denom.tol
+      outputs = "main", clustered = !is.null(cluster),
+      joint = fitmethod == "joint", denom.tol = denom.tol
     )
     se.hat.p <- sqrt(diag(cov.p$main))
     eN0.p <- estimate.itt.p$N0
@@ -565,7 +604,6 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
   }
 
   cov.tables <- list()
-  clustered <- !is.null(cluster)
   reuse.q.fit <- q == p && identical(hfull.rbc, hfull)
 
   if (!is.fuzzy) {
@@ -576,7 +614,8 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
         Y = Y, distance = distance_mat, h = hfull.rbc, p = q, b = b, kernel = kernel,
         vce = vce, bwcheck = bwcheck, masspoints = masspoints, cluster = cluster,
         cbands = length(params.cov) > 0,
-        masspoint.counts = masspoint.counts
+        masspoint.counts = masspoint.counts, fitmethod = fitmethod,
+        covs.eff = covs.mat
       )
     }
     estimate.q <- distancefit.q$Estimate
@@ -585,13 +624,14 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
     eN0.q <- estimate.q$N0
     eN1.q <- estimate.q$N1
 
-    if (length(params.cov) > 0) {
+    if (length(params.cov) > 0 || (clustered && fitmethod == "joint")) {
       project.q <- rd2d_distance_project_fit_sides(distancefit.q, q, clustered)
-      if ("main" %in% params.cov) {
-        cov.tables$main <- rd2d_distance_cov_from_projects(
-          project.q, project.q, side = "both", symmetric = TRUE
-        )
-      }
+      cov.main.q <- rd2d_distance_cov_from_projects(
+        project.q, project.q, side = "both", symmetric = TRUE,
+        joint = fitmethod == "joint", clustered = clustered
+      )
+      if (clustered && fitmethod == "joint") se.hat.q <- sqrt(diag(cov.main.q))
+      if ("main" %in% params.cov) cov.tables$main <- cov.main.q
       if ("main.0" %in% params.cov) {
         cov.tables$main.0 <- rd2d_distance_cov_from_projects(
           project.q, project.q, side = "0", symmetric = TRUE
@@ -612,13 +652,15 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
         Y = Y, distance = distance_mat, h = hfull.rbc, p = q, b = b, kernel = kernel,
         vce = vce, bwcheck = bwcheck, masspoints = masspoints, cluster = cluster,
         cbands = TRUE,
-        masspoint.counts = masspoint.counts
+        masspoint.counts = masspoint.counts, fitmethod = fitmethod,
+        covs.eff = covs.mat
       )
       distancefit.fs.q <- rd2d_distance_fit(
         Y = fuzzy, distance = distance_mat, h = hfull.rbc, p = q, b = b, kernel = kernel,
         vce = vce, bwcheck = bwcheck, masspoints = masspoints, cluster = cluster,
         cbands = TRUE,
-        masspoint.counts = masspoint.counts
+        masspoint.counts = masspoint.counts, fitmethod = fitmethod,
+        covs.eff = covs.mat
       )
     }
     estimate.itt.q <- distancefit.Y.q$Estimate
@@ -644,7 +686,8 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
     cov.outputs <- unique(c("main", params.cov))
     cov.q <- rd2d_distance_fuzzy_cov_tables(
       distancefit.Y.q, distancefit.fs.q, q, tau.itt.q, tau.fs.q,
-      outputs = cov.outputs, clustered = clustered, denom.tol = denom.tol
+      outputs = cov.outputs, clustered = clustered,
+      joint = fitmethod == "joint", denom.tol = denom.tol
     )
     se.hat.q <- sqrt(diag(cov.q$main))
     cov.tables <- cov.q[intersect(names(cov.q), params.cov)]
@@ -819,6 +862,7 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
     )
   }
 
+  covs.rank <- rd2d_covs_rank_summary()
   out <- c(
     result.tables,
     list(
@@ -829,7 +873,13 @@ rd2d.distance <- function(Y, distance, h = NULL, b = NULL, p = 1, q = NULL,
         M = M.vec, M.0 = M.0.vec, M.1 = M.1.vec, neval=neval,
         bwselect = bwselect, bwparam = bwparam, vce = vce,
         bwcheck = bwcheck, masspoints = masspoints, cluster = cluster,
-        clustered = clustered, scaleregul = scaleregul, cqt = cqt,
+        clustered = clustered, covs.eff = !is.null(covs.mat),
+        N.covs.eff = if (!is.null(covs.mat)) ncol(covs.mat) else 0,
+        N.covs.used = covs.rank$used, covs.dropped = covs.rank$dropped,
+        covs.redundant = covs.rank$redundant,
+        covs.rank.deficient = covs.rank$rank.deficient,
+        covs.drop = covs.drop, covs.tol = covs.tol,
+        fitmethod = fitmethod, scaleregul = scaleregul, cqt = cqt,
         level = level, side = side, cbands = cbands,
         params.other = params.other, params.cov = params.cov,
         fuzzy = is.fuzzy,
@@ -889,7 +939,9 @@ print.rd2d.distance <- function(x,...) {
     cat(sprintf("Known kink positions   %s\n", paste(which(x$opt$kink.position), collapse = ", ")))
   }
   cat(sprintf("VCE method             %s\n", paste(x$opt$vce, ifelse(x$opt$clustered, "-clustered", ""),sep = "")))
+  cat(sprintf("Fit method             %s\n", x$opt$fitmethod))
   cat(sprintf("Masspoints             %s\n", x$opt$masspoints))
+  rd2d_print_covs_eff(x$opt)
   if (isTRUE(x$opt$fuzzy)) {
     cat(sprintf("Fuzzy                  on\n"))
     cat(sprintf("BW target              %s\n", x$opt$bwparam))
@@ -1059,7 +1111,9 @@ summary.rd2d.distance <- function(object, ...) {
     cat(sprintf("Known kink positions   %s\n", paste(which(x$opt$kink.position), collapse = ", ")))
   }
   cat(sprintf("VCE method             %s\n", paste(x$opt$vce, ifelse(x$opt$clustered, "-clustered", ""), sep = "")))
+  cat(sprintf("Fit method             %s\n", x$opt$fitmethod))
   cat(sprintf("Masspoints             %s\n", x$opt$masspoints))
+  rd2d_print_covs_eff(x$opt)
   if (isTRUE(x$opt$fuzzy)) {
     cat(sprintf("Fuzzy                  on\n"))
     cat(sprintf("BW target              %s\n", x$opt$bwparam))

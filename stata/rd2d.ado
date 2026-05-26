@@ -2,7 +2,7 @@
 * RD2D STATA PACKAGE -- rd2d
 * Authors: Matias D. Cattaneo, Rocio Titiunik, Ruiqi Rae Yu
 ********************************************************************************
-*!version 0.2.0  2026-05-23
+*!version 1.0.0  2026-05-26
 
 capture program drop rd2d
 program define rd2d, eclass
@@ -15,7 +15,7 @@ program define rd2d, eclass
 		  SIDE(string) REPp(integer 1000) BWSELECT(string) BWPARAM(string) ///
 		  Method(string) BWCHECK(integer -1) SCALEREGUL(real 3) ///
 		  SCALEBIASCRCT(real 1) STDVARS(string) PARAMSOther(string) ///
-		  PARAMSCov(string) ]
+		  PARAMSCov(string) FITMethod(string) COVSEFF(varlist numeric) ]
 
 	marksample touse
 	tokenize `varlist'
@@ -26,6 +26,7 @@ program define rd2d, eclass
 
 	markout `touse' `y' `x1' `x2' `d'
 	if "`fuzzy'" != "" markout `touse' `fuzzy'
+	if "`covseff'" != "" markout `touse' `covseff'
 	if "`cluster'" != "" markout `touse' `cluster'
 
 	if "`kernel'" == "" local kernel "tri"
@@ -36,6 +37,12 @@ program define rd2d, eclass
 	if "`bwselect'" == "" local bwselect "mserd"
 	if "`bwparam'" == "" local bwparam "main"
 	if "`method'" == "" local method "dpi"
+	if "`fitmethod'" == "" local fitmethod "joint"
+	local fitmethod = lower("`fitmethod'")
+	if !inlist("`fitmethod'", "joint", "separate") {
+		di as error "fitmethod() must be joint or separate"
+		exit 198
+	}
 	if `bwcheck' < 0 local bwcheck = 50 + `p' + 1
 	local stdflag = 1
 	if lower("`stdvars'") == "off" local stdflag = 0
@@ -62,7 +69,7 @@ program define rd2d, eclass
 		st_local("deriv"), st_local("tangvec"), `p', `q', "`kernel'", ///
 		"`kerneltype'", "`vce'", `level', "`side'", "`bwselect'", ///
 		"`bwparam'", "`method'", `bwcheck', "`masspoints'", ///
-		`scaleregul', `scalebiascrct', `stdflag')
+		`scaleregul', `scalebiascrct', `stdflag', "`fitmethod'", "`covseff'")
 
 	local maincols b1 b2 estimate_p std_err_p estimate_q std_err_q t_value p_value ci_lower ci_upper h01 h02 h11 h12 N_Co N_Tr
 	local bwcols b1 b2 h01 h02 h11 h12 N_Co N_Tr
@@ -152,8 +159,10 @@ program define rd2d, eclass
 	ereturn local bwselect "`bwselect'"
 	ereturn local bwparam "`bwparam'"
 	ereturn local method "`method'"
+	ereturn local fitmethod "`fitmethod'"
 	ereturn local masspoints "`masspoints'"
 	ereturn local fuzzy "`fuzzy'"
+	ereturn local covseff "`covseff'"
 
 	di as text _newline "Location-based boundary discontinuity estimates"
 	matlist e(main), names(columns) format(%10.4f)

@@ -23,6 +23,10 @@ rdbw2d(
   bwcheck = 20,
   masspoints = c("check", "adjust", "off"),
   cluster = NULL,
+  covs.eff = NULL,
+  covs.drop = TRUE,
+  covs.tol = 1e-12,
+  fitmethod = c("joint", "separate"),
   scaleregul = 1,
   scalebiascrct = 1,
   stdvars = TRUE,
@@ -94,6 +98,25 @@ Default is \code{"hc1"}.}
 
 \item{cluster}{Cluster ID variable used for cluster-robust variance estimation with degrees-of-freedom weights. Default is \code{cluster = NULL}.}
 
+\item{covs.eff}{Optional pre-intervention covariates used for efficiency
+adjustment. Must be a numeric vector, matrix, or data frame with the same
+number of rows as \code{Y}. Covariate coefficients are constrained to be
+common across treatment sides.}
+
+\item{covs.drop}{Logical. If \code{TRUE} (default), redundant covariate
+columns are dropped from the common covariate-adjustment solve when the
+residualized covariate matrix is rank deficient. If \code{FALSE}, a
+generalized inverse is used instead.}
+
+\item{covs.tol}{Positive numeric tolerance used to detect rank deficiency
+in residualized \code{covs.eff}. Default is \code{1e-12}.}
+
+\item{fitmethod}{Estimation method used for the variance constants entering
+bandwidth selection. \code{"joint"} (default) uses treatment-side interacted
+local polynomial fits with joint variance corrections, matching the default
+in \code{\link{rd2d}}. \code{"separate"} uses the legacy side-specific
+variance calculations.}
+
 \item{scaleregul}{Scaling factor for the regularization term in bandwidth selection. Default is 1.}
 
 \item{scalebiascrct}{Scaling factor used for bias correction based on higher order expansions. Default is 1.}
@@ -128,10 +151,16 @@ A list of class \code{"rdbw2d"} containing:
 \item{\code{bias.1}}{Bias constant estimate for the treatment group.}
 \item{\code{var.0}}{Variance constant estimate for the control group.}
 \item{\code{var.1}}{Variance constant estimate for the treatment group.}
+\item{\code{var.01}}{Covariance constant between the control and
+treatment variance scores, used by joint clustered common-bandwidth
+selectors.}
 \item{\code{reg.bias.0}}{Bias correction adjustment for the control group.}
 \item{\code{reg.bias.1}}{Bias correction adjustment for the treatment group.}
 \item{\code{reg.var.0}}{Variance of the bias estimate for the control group.}
 \item{\code{reg.var.1}}{Variance of the bias estimate for the treatment group.}
+\item{\code{reg.var.01}}{Covariance counterpart of \code{reg.var.0}
+and \code{reg.var.1}, used by joint clustered common-bandwidth
+selectors.}
 }
 }
 \item{\code{opt}}{List containing:
@@ -144,6 +173,7 @@ A list of class \code{"rdbw2d"} containing:
 \item{\code{bwparam}}{Target parameter for fuzzy bandwidth selection.}
 \item{\code{method}}{Bandwidth estimation method.}
 \item{\code{vce}}{Variance estimation method.}
+\item{\code{fitmethod}}{Variance-fitting method used by the selector.}
 \item{\code{scaleregul}}{Scaling factor for regularization.}
 \item{\code{scalebiascrct}}{Scaling factor for bias correction.}
 \item{\code{N}}{Total sample size \eqn{N}.}

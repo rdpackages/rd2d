@@ -282,6 +282,7 @@ X <- dat[, c("x.1", "x.2")]
 Y <- dat$Y
 A <- dat$assignment
 D <- dat$fuzzy
+Z <- dat[, c("Z.1", "Z.2")]
 
 # Set plot inputs.
 neval <- as.integer(Sys.getenv("RD2D_ILLUSTRATION_NEVAL", "40"))
@@ -290,28 +291,34 @@ eval <- make_eval_grid(neval)
 distance <- make_signed_distances(X, eval, A)
 wbate_weights <- rep(1, neval)
 
-# Location-based fuzzy estimation.
+# Location-based fuzzy estimation with covariate adjustment.
 fit_location <- rd2d(
   Y, X, A, eval,
   fuzzy = D,
+  covs.eff = Z,
+  fitmethod = "joint",
   params.other = "itt.0",
   params.cov = c("main", "itt", "fs", "itt.0"),
   masspoints = "off"
 )
 
-# Distance-based sharp estimation.
+# Distance-based sharp estimation with covariate adjustment.
 fit_distance <- rd2d.distance(
   Y,
   distance = distance,
   b = eval,
+  covs.eff = Z,
+  fitmethod = "joint",
   masspoints = "off",
   cbands = TRUE
 )
 
-# Distance-based fuzzy estimation.
+# Distance-based fuzzy estimation with covariate adjustment.
 fit_distance_fuzzy <- rd2d.distance(
   Y, distance = distance, b = eval,
   fuzzy = D, bwparam = "itt",
+  covs.eff = Z,
+  fitmethod = "joint",
   params.cov = c("main", "itt", "fs"),
   masspoints = "off"
 )

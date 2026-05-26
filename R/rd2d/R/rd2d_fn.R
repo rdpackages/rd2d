@@ -222,10 +222,58 @@ rdbw2d_rot <- function(x,kernel.type, M){
 
 ###### Bandwidth Selection using Global Fit for Higher Order Derivatives #######
 
-rdbw2d_bw_v2 <- function(dat.centered, p, vec, dn, bn.1,
-                         bn.2 = NULL, vce, kernel, kernel_type, cluster){
+rdbw2d_effective_weights <- function(dat, h, kernel, kernel_type) {
+  h <- rd2d_h_normalize(h, kernel_type)
+  if (kernel_type == "prod") {
+    kernel_weight(dat$x.1 / h[1], kernel) *
+      kernel_weight(dat$x.2 / h[2], kernel) /
+      (h[1] * h[2])
+  } else {
+    kernel_weight(dat$distance / h, kernel) / h^2
+  }
+}
 
-  dat.centered <- dat.centered[,c("x.1", "x.2", "y", "d", "distance")]
+rdbw2d_joint_effective_info <- function(dat.0, dat.1, h.0, h.1,
+                                        kernel, kernel_type,
+                                        cluster.0 = NULL,
+                                        cluster.1 = NULL) {
+  w.0 <- rdbw2d_effective_weights(dat.0, h.0, kernel, kernel_type)
+  w.1 <- rdbw2d_effective_weights(dat.1, h.1, kernel, kernel_type)
+  ind.0 <- as.logical(w.0 > 0)
+  ind.1 <- as.logical(w.1 > 0)
+  eC <- NULL
+  if (!is.null(cluster.0) || !is.null(cluster.1)) {
+    eC <- c(cluster.0[ind.0], cluster.1[ind.1])
+  }
+
+  list(eN = sum(ind.0) + sum(ind.1), eC = eC)
+}
+
+rdbw2d_bw_v2 <- function(dat.centered, p, vec, dn, bn.1,
+                         bn.2 = NULL, vce, kernel, kernel_type, cluster,
+                         fitmethod = c("separate", "joint"),
+                         clusters = NULL, joint.info.v = NULL,
+                         joint.info.b = NULL, cov.names = NULL,
+                         gamma.v = NULL, gamma.b = NULL,
+                         gamma.t = NULL){
+  fitmethod <- match.arg(fitmethod)
+  joint <- fitmethod == "joint"
+  clustered <- !is.null(cluster)
+  if (is.null(clusters)) clusters <- unique(cluster)
+  covariate.adjusted <- !is.null(cov.names) && length(cov.names) > 0
+  n.cov.v <- rd2d_covs_gamma_rank(gamma.v, cov.names)
+  n.cov.b <- rd2d_covs_gamma_rank(gamma.b, cov.names)
+  vce.local <- if ((joint || covariate.adjusted) && vce == "hc1") {
+    "hc0"
+  } else {
+    vce
+  }
+  cluster.df <- !(joint && clustered) && !(covariate.adjusted && clustered)
+
+  dat.centered <- dat.centered[,c("x.1", "x.2", "y", "d", "distance", cov.names)]
+  dat.v <- rd2d_apply_covariate_adjustment(
+    dat.centered, "y", cov.names, gamma.v
+  )
 
   # Variance and coefficients for a linear combination of (p+1)-th derivatives.
   if (kernel_type == "prod"){
@@ -240,7 +288,7 @@ rdbw2d_bw_v2 <- function(dat.centered, p, vec, dn, bn.1,
   eN.v <- sum(ind.v)
 
   ew.v <- w.v[ind.v]
-  eY.v <- dat.centered$y[ind.v]
+  eY.v <- dat.v$y[ind.v]
 
   eC.v <- cluster[ind.v]
 
@@ -290,62 +338,108 @@ rdbw2d_bw_v2 <- function(dat.centered, p, vec, dn, bn.1,
 
   resd.v <- (eY.v - eR.v %*% (H.p %*% beta.v))[,1]
 
-  if (vce=="hc0") {
+  if (vce.local=="hc0") {
     w.vce = 1
-  } else if (vce=="hc1") {
-    rd2d_warn_vce_small_en(vce, eN.v, k.v, "in the bandwidth selector")
+  } else if (vce.local=="hc1") {
+    rd2d_warn_vce_small_en(vce.local, eN.v, k.v, "in the bandwidth selector")
     w.vce = sqrt(eN.v/(eN.v - k.v))
-  } else if (vce=="hc2") {
-    rd2d_warn_vce_small_en(vce, eN.v, k.v, "in the bandwidth selector")
+  } else if (vce.local=="hc2") {
+    rd2d_warn_vce_small_en(vce.local, eN.v, k.v, "in the bandwidth selector")
     hii <- rd2d_leverage(sqrtw_R.v, invG.v)
-    rd2d_warn_vce_high_leverage(vce, hii, "in the bandwidth selector")
+    rd2d_warn_vce_high_leverage(vce.local, hii, "in the bandwidth selector")
     w.vce = sqrt(1/(1-hii))
-  } else if (vce=="hc3"){
-    rd2d_warn_vce_small_en(vce, eN.v, k.v, "in the bandwidth selector")
+  } else if (vce.local=="hc3"){
+    rd2d_warn_vce_small_en(vce.local, eN.v, k.v, "in the bandwidth selector")
     hii <- rd2d_leverage(sqrtw_R.v, invG.v)
-    rd2d_warn_vce_high_leverage(vce, hii, "in the bandwidth selector")
+    rd2d_warn_vce_high_leverage(vce.local, hii, "in the bandwidth selector")
     w.vce = 1/(1-hii)
   }
 
   resd.v <- resd.v * w.vce
 
-  # sigma.v <-  t(resd.v * sqrtw_R.v) %*% (ew.v * resd.v * sqrtw_R.v) * dn^2
-
-  sigma.v <- rd2d_vce(w_R.v, resd.v, eC.v, dn)
-
-  V.V <- t(as.matrix(vec)) %*%
-    t(invG.v) %*%
-    sigma.v %*%
-    invG.v %*%
-    as.matrix(vec)
-  V.V <- V.V[1,1]
+  if (clustered) {
+    g.eff <- length(unique(eC.v))
+    cluster.scale <- if (cluster.df) {
+      ((eN.v - 1) / (eN.v - k.v)) * (g.eff / (g.eff - 1))
+    } else {
+      1
+    }
+    half.v <- rd2d_cluster_sums(w_R.v * resd.v, eC.v, clusters) *
+      sqrt(dn^2 * cluster.scale)
+    half.v <- half.v %*% invG.v
+  } else {
+    half.v <- sweep(as.matrix(sqrtw_R.v), 1, sqrt(ew.v) * resd.v, "*") *
+      dn
+    half.v <- half.v %*% invG.v
+  }
+  if (joint && (vce == "hc1" || clustered)) {
+    if (is.null(joint.info.v)) joint.info.v <- list(eN = eN.v, eC = eC.v)
+    half.v <- half.v * rd2d_joint_scale(
+      vce, joint.info.v$eN, 2 * k.v + n.cov.v, joint.info.v$eC, clustered
+    )
+  } else if (covariate.adjusted && (vce == "hc1" || clustered)) {
+    half.v <- half.v * rd2d_joint_scale(
+      vce, eN.v, k.v + n.cov.v, eC.v, clustered
+    )
+  }
+  V.half <- half.v %*% as.matrix(vec)
+  V.V <- as.numeric(crossprod(V.half))
 
   # Bias
 
-  fit.ppls1 <- rd2d_lm(dat.centered, bn.1, p + 1, vce, kernel = kernel,
-                       kernel_type = kernel_type, cluster = cluster, varr = TRUE)
+  dat.b <- rd2d_apply_covariate_adjustment(
+    dat.centered, "y", cov.names, gamma.b
+  )
+  fit.ppls1 <- rd2d_lm(dat.b, bn.1, p + 1, vce.local, kernel = kernel,
+                       kernel_type = kernel_type, cluster = cluster, varr = FALSE)
 
   deriv.ppls1 <- fit.ppls1$beta
   B.B <- vec.q %*% deriv.ppls1
   B.B <- B.B[1,1]
-  V.B <- matrix(vec.q, nrow = 1) %*%
-    fit.ppls1$cov.const %*%
-    matrix(vec.q, ncol = 1) /
-    (bn.1^(2 + 2 * (p+1)))
-  V.B <- V.B[1,1]
+  bias.half.obj <- get_cov_half_v2(
+    dat.b, bn.1, p + 1, vce.local, kernel, kernel_type, cluster,
+    clusters, cluster.df = cluster.df
+  )
+  bias.half <- bias.half.obj$cov.half.const
+  if (joint && (vce == "hc1" || clustered)) {
+    if (is.null(joint.info.b)) {
+      joint.info.b <- list(
+        eN = sum(bias.half.obj$ind),
+        eC = if (clustered) cluster[bias.half.obj$ind] else NULL
+      )
+    }
+    bias.half <- bias.half * rd2d_joint_scale(
+      vce, joint.info.b$eN, 2 * ncol(bias.half) + n.cov.b, joint.info.b$eC,
+      clustered
+    )
+  } else if (covariate.adjusted && (vce == "hc1" || clustered)) {
+    bias.half <- bias.half * rd2d_joint_scale(
+      vce, sum(bias.half.obj$ind), ncol(bias.half) + n.cov.b,
+      if (clustered) cluster[bias.half.obj$ind] else NULL, clustered
+    )
+  }
+  Reg.1.half <- bias.half %*% matrix(vec.q, ncol = 1) /
+    (bn.1^(p + 2))
+  V.B <- as.numeric(crossprod(Reg.1.half))
 
   Reg.v <- V.B
 
   Reg.b <- NA
 
   if (!is.null(bn.2)){
-    fit.ppls2 <- rd2d_lm(dat.centered, bn.2, p + 2, vce, kernel = kernel,
+    dat.t <- rd2d_apply_covariate_adjustment(
+      dat.centered, "y", cov.names, gamma.t
+    )
+    fit.ppls2 <- rd2d_lm(dat.t, bn.2, p + 2, vce.local, kernel = kernel,
                          kernel_type = kernel_type, cluster = cluster, varr = FALSE)
     deriv.ppls2 <- fit.ppls2$beta
     Reg.b <- dn * vec.t %*% deriv.ppls2
   }
 
-  return(list("B" = B.B, "V" = V.V, "Reg.2" = Reg.b, "Reg.1" = Reg.v))
+  return(list(
+    "B" = B.B, "V" = V.V, "Reg.2" = Reg.b, "Reg.1" = Reg.v,
+    "V.half" = V.half, "Reg.1.half" = Reg.1.half
+  ))
 }
 
 
@@ -426,11 +520,12 @@ rd2d_fit <- function(dat, eval, deriv = NULL,o = 0, p = 1,
                      kernel = "epa", kernel_type = "prod", vce = "hc1",
                      masspoints = "adjust", cluster = NULL,
                      bwcheck = 50 + p + 1, unique = NULL,
-                     bwcheck.bounds = NULL){
+                     bwcheck.bounds = NULL, cov.names = NULL){
 
-  dat <- dat[,c("x.1", "x.2", "y", "d")]
-  na.ok <- complete.cases(dat$x.1) & complete.cases(dat$x.2)
+  dat <- dat[,c("x.1", "x.2", "y", "d", cov.names)]
+  na.ok <- complete.cases(dat)
   dat <- dat[na.ok,]
+  if (!is.null(cluster)) cluster <- cluster[na.ok]
   N <- dim(dat)[1]
 
   if (!is.null(bwcheck)) {
@@ -483,7 +578,7 @@ rd2d_fit <- function(dat, eval, deriv = NULL,o = 0, p = 1,
 
     # Center data
 
-    dat.centered <- dat[,c("x.1", "x.2", "y", "d")]
+    dat.centered <- dat[,c("x.1", "x.2", "y", "d", cov.names)]
     dat.centered$x.1 <- dat.centered$x.1 - ev$x.1
     dat.centered$x.2 <- dat.centered$x.2 - ev$x.2
     # For product kernel, standardize covariates to have the same sd.
@@ -525,13 +620,23 @@ rd2d_fit <- function(dat, eval, deriv = NULL,o = 0, p = 1,
       }
     }
 
+    dat.fit <- dat.centered
+    if (!is.null(cov.names)) {
+      gamma <- rd2d_covariate_gamma(
+        dat.centered, h.0, h.1, p, kernel, kernel_type, "y", cov.names
+      )
+      dat.fit <- rd2d_apply_covariate_adjustment(
+        dat.centered, "y", cov.names, gamma
+      )
+    }
+
     fit.0.p <- rd2d_lm(
-      dat.centered[dat.centered$d == 0,], h.0, p, vce, kernel = kernel,
-      cluster = cluster[dat.centered$d == 0], varr = TRUE, kernel_type = kernel_type
+      dat.fit[dat.fit$d == 0,], h.0, p, vce, kernel = kernel,
+      cluster = cluster[dat.fit$d == 0], varr = TRUE, kernel_type = kernel_type
     )
     fit.1.p <- rd2d_lm(
-      dat.centered[dat.centered$d == 1,], h.1, p, vce, kernel = kernel,
-      cluster = cluster[dat.centered$d == 1], varr = TRUE, kernel_type = kernel_type
+      dat.fit[dat.fit$d == 1,], h.1, p, vce, kernel = kernel,
+      cluster = cluster[dat.fit$d == 1], varr = TRUE, kernel_type = kernel_type
     )
     mu.0 <- (vec %*% fit.0.p$beta)[1,1]
     mu.1 <- (vec %*% fit.1.p$beta)[1,1]
@@ -599,11 +704,13 @@ rd2d_fit_multi <- function(dat, eval, deriv = NULL, o = 0, p = 1,
                            masspoints = "adjust", cluster = NULL,
                            bwcheck = 50 + p + 1, unique = NULL,
                            bwcheck.bounds = NULL,
-                           outcomes = c("y", "fuzzy")){
+                           outcomes = c("y", "fuzzy"),
+                           cov.names = NULL){
 
-  dat <- dat[, c("x.1", "x.2", "d", outcomes)]
-  na.ok <- complete.cases(dat$x.1) & complete.cases(dat$x.2)
+  dat <- dat[, c("x.1", "x.2", "d", outcomes, cov.names)]
+  na.ok <- complete.cases(dat)
   dat <- dat[na.ok,]
+  if (!is.null(cluster)) cluster <- cluster[na.ok]
 
   if (!is.null(bwcheck)) {
     if (!is.numeric(bwcheck) || length(bwcheck) != 1 ||
@@ -699,13 +806,23 @@ rd2d_fit_multi <- function(dat, eval, deriv = NULL, o = 0, p = 1,
       }
     }
 
+    dat.fit <- dat.centered
+    if (!is.null(cov.names)) {
+      gamma <- rd2d_covariate_gamma(
+        dat.centered, h.0, h.1, p, kernel, kernel_type, outcomes, cov.names
+      )
+      dat.fit <- rd2d_apply_covariate_adjustment(
+        dat.centered, outcomes, cov.names, gamma
+      )
+    }
+
     fit.0.p <- rd2d_lm_multi(
-      dat.centered[side.0,], h.0, p, vce, kernel = kernel,
+      dat.fit[side.0,], h.0, p, vce, kernel = kernel,
       cluster = cluster.0, varr = TRUE, kernel_type = kernel_type,
       outcomes = outcomes
     )
     fit.1.p <- rd2d_lm_multi(
-      dat.centered[side.1,], h.1, p, vce, kernel = kernel,
+      dat.fit[side.1,], h.1, p, vce, kernel = kernel,
       cluster = cluster.1, varr = TRUE, kernel_type = kernel_type,
       outcomes = outcomes
     )
@@ -774,6 +891,220 @@ rd2d_hxy <- function(h){
   }
 }
 
+rd2d_prepare_cov_eff <- function(covs.eff, n) {
+  if (is.null(covs.eff)) {
+    return(list(matrix = NULL, names = NULL))
+  }
+
+  if (is.null(dim(covs.eff))) {
+    cov.raw <- matrix(covs.eff, ncol = 1)
+  } else if (is.matrix(covs.eff) || is.data.frame(covs.eff)) {
+    cov.raw <- as.matrix(covs.eff)
+  } else {
+    stop("covs.eff must be NULL, a numeric vector, matrix, or data frame.",
+         call. = FALSE)
+  }
+
+  if (nrow(cov.raw) != n) {
+    stop("covs.eff must have the same number of observations as Y.",
+         call. = FALSE)
+  }
+  if (ncol(cov.raw) < 1) {
+    stop("covs.eff must contain at least one covariate column.", call. = FALSE)
+  }
+
+  cov.num <- suppressWarnings(matrix(
+    as.numeric(cov.raw),
+    nrow = nrow(cov.raw),
+    ncol = ncol(cov.raw)
+  ))
+  bad.numeric <- is.na(cov.num) & !is.na(cov.raw)
+  if (any(bad.numeric)) {
+    stop("covs.eff must contain numeric covariates.", call. = FALSE)
+  }
+
+  cov.names <- paste0("z.", seq_len(ncol(cov.num)))
+  colnames(cov.num) <- cov.names
+  list(matrix = cov.num, names = cov.names)
+}
+
+rd2d_stop_errors <- function(errors) {
+  errors <- errors[nzchar(errors)]
+  if (length(errors) > 0) {
+    stop(paste(errors, collapse = "\n"), call. = FALSE)
+  }
+}
+
+.rd2d_covs_rank_env <- new.env(parent = emptyenv())
+.rd2d_covs_rank_env$depth <- 0L
+.rd2d_covs_rank_env$covs.drop <- TRUE
+.rd2d_covs_rank_env$covs.tol <- 1e-12
+
+rd2d_validate_covs_rank_options <- function(covs.drop, covs.tol) {
+  errors <- character(0)
+  if (!is.logical(covs.drop) || length(covs.drop) != 1 || is.na(covs.drop)) {
+    errors <- c(errors, "covs.drop must be TRUE or FALSE.")
+  }
+  if (!is.numeric(covs.tol) || length(covs.tol) != 1 ||
+      !is.finite(covs.tol) || covs.tol <= 0) {
+    errors <- c(errors, "covs.tol must be a positive finite numeric value.")
+  }
+  errors
+}
+
+rd2d_covs_rank_begin <- function(cov.names, covs.drop, covs.tol) {
+  depth <- .rd2d_covs_rank_env$depth
+  if (is.null(depth) || depth == 0L) {
+    supplied <- if (is.null(cov.names)) 0L else length(cov.names)
+    .rd2d_covs_rank_env$supplied <- supplied
+    .rd2d_covs_rank_env$used.min <- supplied
+    .rd2d_covs_rank_env$redundant <- character(0)
+    .rd2d_covs_rank_env$dropped <- character(0)
+    .rd2d_covs_rank_env$rank.deficient <- FALSE
+    .rd2d_covs_rank_env$warned <- FALSE
+    .rd2d_covs_rank_env$covs.drop <- covs.drop
+    .rd2d_covs_rank_env$covs.tol <- covs.tol
+  }
+  .rd2d_covs_rank_env$depth <- if (is.null(depth)) 1L else depth + 1L
+  invisible(NULL)
+}
+
+rd2d_covs_rank_end <- function() {
+  depth <- .rd2d_covs_rank_env$depth
+  .rd2d_covs_rank_env$depth <- max(0L, if (is.null(depth)) 0L else depth - 1L)
+  invisible(NULL)
+}
+
+rd2d_covs_rank_summary <- function() {
+  supplied <- .rd2d_covs_rank_env$supplied
+  if (is.null(supplied)) supplied <- 0L
+  used <- .rd2d_covs_rank_env$used.min
+  if (is.null(used)) used <- supplied
+  list(
+    supplied = supplied,
+    used = used,
+    redundant = .rd2d_covs_rank_env$redundant,
+    dropped = .rd2d_covs_rank_env$dropped,
+    rank.deficient = isTRUE(.rd2d_covs_rank_env$rank.deficient),
+    drop = isTRUE(.rd2d_covs_rank_env$covs.drop),
+    tol = .rd2d_covs_rank_env$covs.tol
+  )
+}
+
+rd2d_covs_rank_option <- function(name, default) {
+  value <- .rd2d_covs_rank_env[[name]]
+  if (is.null(value)) default else value
+}
+
+rd2d_covs_rank_update <- function(cov.names, keep, covs.drop) {
+  supplied <- length(cov.names)
+  used <- length(keep)
+  dropped <- cov.names[setdiff(seq_len(supplied), keep)]
+  if (is.null(.rd2d_covs_rank_env$supplied)) {
+    .rd2d_covs_rank_env$supplied <- supplied
+  }
+  if (is.null(.rd2d_covs_rank_env$used.min)) {
+    .rd2d_covs_rank_env$used.min <- supplied
+  }
+  if (is.null(.rd2d_covs_rank_env$redundant)) {
+    .rd2d_covs_rank_env$redundant <- character(0)
+  }
+  if (is.null(.rd2d_covs_rank_env$dropped)) {
+    .rd2d_covs_rank_env$dropped <- character(0)
+  }
+  .rd2d_covs_rank_env$rank.deficient <- TRUE
+  .rd2d_covs_rank_env$used.min <- min(.rd2d_covs_rank_env$used.min, used)
+  .rd2d_covs_rank_env$redundant <- union(.rd2d_covs_rank_env$redundant, dropped)
+  if (isTRUE(covs.drop)) {
+    .rd2d_covs_rank_env$dropped <- union(.rd2d_covs_rank_env$dropped, dropped)
+  }
+
+  if (!isTRUE(.rd2d_covs_rank_env$warned)) {
+    action <- if (isTRUE(covs.drop)) {
+      "dropping redundant covariate columns"
+    } else {
+      "using a generalized inverse"
+    }
+    warning(
+      paste(
+        "covs.eff is rank deficient after residualizing on the local polynomial basis;",
+        action,
+        "for numerical stability."
+      ),
+      call. = FALSE
+    )
+    .rd2d_covs_rank_env$warned <- TRUE
+  }
+  invisible(NULL)
+}
+
+rd2d_covs_gamma_rank <- function(gamma, cov.names = NULL) {
+  if (is.null(cov.names) || length(cov.names) == 0) return(0L)
+  rank <- attr(gamma, "rank")
+  if (is.null(rank) || !is.finite(rank)) length(cov.names) else as.integer(rank)
+}
+
+rd2d_print_covs_eff <- function(opt) {
+  if (!isTRUE(opt$covs.eff)) return(invisible(NULL))
+  cat(sprintf("Covariates             %d\n", opt$N.covs.eff))
+  if (isTRUE(opt$covs.rank.deficient)) {
+    cat(sprintf("Covariate rank         %d\n", opt$N.covs.used))
+    if (length(opt$covs.dropped) > 0) {
+      cat(sprintf("Covariates dropped     %s\n", paste(opt$covs.dropped, collapse = ", ")))
+    }
+  }
+  invisible(NULL)
+}
+
+rd2d_covs_rank_solve <- function(ZWZ, ZWY, cov.names, covs.drop = NULL,
+                                 covs.tol = NULL, ginv.tol = 1e-20) {
+  covs.drop <- if (is.null(covs.drop)) {
+    rd2d_covs_rank_option("covs.drop", TRUE)
+  } else {
+    covs.drop
+  }
+  covs.tol <- if (is.null(covs.tol)) {
+    rd2d_covs_rank_option("covs.tol", 1e-12)
+  } else {
+    covs.tol
+  }
+
+  p <- ncol(ZWZ)
+  qrZ <- qr(ZWZ, tol = covs.tol)
+  rank <- qrZ$rank
+  keep <- if (rank > 0L) qrZ$pivot[seq_len(rank)] else integer(0)
+
+  if (rank < p) {
+    rd2d_covs_rank_update(cov.names, keep, covs.drop)
+    gamma <- matrix(0, nrow = p, ncol = ncol(ZWY))
+    if (isTRUE(covs.drop)) {
+      if (rank > 0L) {
+        gamma.keep <- tryCatch(
+          solve(ZWZ[keep, keep, drop = FALSE], ZWY[keep, , drop = FALSE]),
+          error = function(e) {
+            ginv(ZWZ[keep, keep, drop = FALSE], tol = ginv.tol) %*%
+              ZWY[keep, , drop = FALSE]
+          }
+        )
+        gamma[keep, ] <- gamma.keep
+      }
+    } else {
+      gamma <- ginv(ZWZ, tol = ginv.tol) %*% ZWY
+    }
+  } else {
+    gamma <- tryCatch(
+      solve(ZWZ, ZWY),
+      error = function(e) ginv(ZWZ, tol = ginv.tol) %*% ZWY
+    )
+  }
+
+  gamma <- as.matrix(gamma)
+  attr(gamma, "rank") <- rank
+  attr(gamma, "kept") <- cov.names[keep]
+  attr(gamma, "dropped") <- cov.names[setdiff(seq_len(p), keep)]
+  gamma
+}
+
 rd2d_cluster_sums <- function(values, eC, clusters) {
   values <- as.matrix(values)
   out <- matrix(0, nrow = length(clusters), ncol = ncol(values))
@@ -783,6 +1114,61 @@ rd2d_cluster_sums <- function(values, eC, clusters) {
   sums <- rowsum(values, group = groups, reorder = FALSE)
   out[as.integer(rownames(sums)), ] <- sums
   out
+}
+
+rd2d_covariate_gamma <- function(dat.centered, h.0, h.1, p, kernel,
+                                 kernel_type, outcomes, cov.names,
+                                 ginv.tol = 1e-20, covs.drop = NULL,
+                                 covs.tol = NULL) {
+  if (is.null(cov.names) || length(cov.names) == 0) return(NULL)
+
+  outcomes <- as.character(outcomes)
+  cov.names <- as.character(cov.names)
+  side.0 <- dat.centered$d == 0
+  side.1 <- dat.centered$d == 1
+
+  side_components <- function(dat.side, h.side) {
+    loc <- rd2d_local_design(
+      dat.side, h.side, p, kernel, kernel_type, outcomes = c(outcomes, cov.names)
+    )
+    Y <- loc$eY[, outcomes, drop = FALSE]
+    Z <- loc$eY[, cov.names, drop = FALSE]
+    U <- crossprod(loc$w_R, loc$eY)
+    U.y <- U[, outcomes, drop = FALSE]
+    U.z <- U[, cov.names, drop = FALSE]
+
+    list(
+      ZWZ = crossprod(Z * loc$ew, Z) -
+        crossprod(U.z, loc$invG %*% U.z),
+      ZWY = crossprod(Z * loc$ew, Y) -
+        crossprod(U.z, loc$invG %*% U.y)
+    )
+  }
+
+  comp.0 <- side_components(dat.centered[side.0, , drop = FALSE], h.0)
+  comp.1 <- side_components(dat.centered[side.1, , drop = FALSE], h.1)
+  ZWZ <- comp.0$ZWZ + comp.1$ZWZ
+  ZWY <- comp.0$ZWY + comp.1$ZWY
+
+  gamma <- rd2d_covs_rank_solve(
+    ZWZ, ZWY, cov.names, covs.drop = covs.drop, covs.tol = covs.tol,
+    ginv.tol = ginv.tol
+  )
+  rownames(gamma) <- cov.names
+  colnames(gamma) <- outcomes
+  gamma
+}
+
+rd2d_apply_covariate_adjustment <- function(dat, outcomes, cov.names, gamma) {
+  if (is.null(cov.names) || length(cov.names) == 0 || is.null(gamma)) {
+    return(dat)
+  }
+  Z <- as.matrix(dat[, cov.names, drop = FALSE])
+  for (outcome in outcomes) {
+    dat[[outcome]] <- dat[[outcome]] -
+      as.numeric(Z %*% gamma[, outcome, drop = FALSE])
+  }
+  dat
 }
 
 rd2d_project_cov_halves <- function(halves, inds, deriv, hgrid, p,
@@ -814,77 +1200,164 @@ rd2d_project_cov_halves <- function(halves, inds, deriv, hgrid, p,
   projected
 }
 
-rdbw2d_cov <- function(dat, eval, deriv = NULL, o = 0, p = 1,
-                       hgrid.0, hgrid.1 = NULL, kernel = "epa",
-                       kernel_type = "prod", vce = "hc2", cluster = NULL){
-
-  dat <- dat[,c("x.1", "x.2", "y", "d")]
-  na.ok <- complete.cases(dat$x.1) & complete.cases(dat$x.2)
-  dat <- dat[na.ok,]
-  N <- dim(dat)[1]
-
-  neval <- dim(eval)[1]
-  covs <- matrix(NA, nrow = neval, ncol = neval)
-  halves.0 <- list()
-  halves.1 <- list()
-  inds.0 <- list()
-  inds.1 <- list()
-
-  clusters <- unique(cluster)
-  g <- length(clusters)
-
-  # Standardize: if hgrid.0 is a vector, convert it to a m by 1 data frame
-  hgrid.0 <- as.matrix(hgrid.0)
-  if (!is.null(hgrid.1)) {
-    hgrid.1 <- as.matrix(hgrid.1)
+rd2d_joint_scale <- function(vce, eN, k, eC, clustered) {
+  scale <- 1
+  if (vce == "hc1") {
+    rd2d_warn_vce_small_en(vce, eN, k, "in joint rd2d covariance")
+    scale <- scale * sqrt(eN / (eN - k))
   }
+  if (clustered) {
+    g.eff <- length(unique(eC))
+    scale <- scale * sqrt(((eN - 1) / (eN - k)) * (g.eff / (g.eff - 1)))
+  }
+  scale
+}
 
-  for (i in 1:neval){
+rd2d_cov_project_sides <- function(dat, eval, deriv, p, hgrid.0,
+                                   hgrid.1 = NULL, kernel = "epa",
+                                   kernel_type = "prod", vce = "hc2",
+                                   cluster = NULL,
+                                   fitmethod = c("separate", "joint"),
+                                   multi = FALSE, block = NULL,
+                                   cov.names = NULL) {
+  fitmethod <- match.arg(fitmethod)
+  dat <- if (multi) {
+    dat[, c("x.1", "x.2", "y", "d", "fuzzy", cov.names)]
+  } else {
+    dat[, c("x.1", "x.2", "y", "d", cov.names)]
+  }
+  na.ok <- complete.cases(dat)
+  dat <- dat[na.ok,]
+  if (!is.null(cluster)) cluster <- cluster[na.ok]
 
-    ev.a <- eval[i,]
-    h.a.0 <- hgrid.0[i,]
-    h.a.1 <- h.a.0
-    if (!is.null(hgrid.1)) h.a.1 <- hgrid.1[i,]
-    deriv.vec.a <- deriv[i,]
+  hgrid.0 <- as.matrix(hgrid.0)
+  if (!is.null(hgrid.1)) hgrid.1 <- as.matrix(hgrid.1)
 
-    dat.centered <- dat[, c("x.1", "x.2", "y", "d")]
+  neval <- nrow(eval)
+  halves.0 <- halves.1 <- vector("list", neval)
+  inds.0 <- inds.1 <- vector("list", neval)
+  eC.0 <- eC.1 <- vector("list", neval)
+  eN.0 <- eN.1 <- integer(neval)
 
-    dat.centered$x.1 <- dat.centered$x.1 - ev.a$x.1
-    dat.centered$x.2 <- dat.centered$x.2 - ev.a$x.2
+  side.0 <- dat$d == 0
+  side.1 <- dat$d == 1
+  cluster.0 <- cluster[side.0]
+  cluster.1 <- cluster[side.1]
+  clusters <- unique(cluster)
+  clustered <- !is.null(cluster)
+  joint <- fitmethod == "joint"
+  covariate.adjusted <- !is.null(cov.names) && length(cov.names) > 0
+  vce.half <- if ((joint || covariate.adjusted) && vce == "hc1") "hc0" else vce
+  cluster.df <- !(joint && clustered) && !(covariate.adjusted && clustered)
+  get_half <- if (multi) get_cov_half_multi_v2 else get_cov_half_v2
+  dat.centered <- dat
+
+  for (i in seq_len(neval)) {
+    ev <- eval[i,]
+    h.0 <- hgrid.0[i,]
+    h.1 <- h.0
+    if (!is.null(hgrid.1)) h.1 <- hgrid.1[i,]
+
+    dat.centered$x.1 <- dat$x.1 - ev$x.1
+    dat.centered$x.2 <- dat$x.2 - ev$x.2
     dat.centered$distance <- sqrt(dat.centered$x.1^2 + dat.centered$x.2^2)
 
-    cluster.0 <- cluster[as.logical(dat.centered$d == 0)]
-    cluster.1 <- cluster[as.logical(dat.centered$d == 1)]
+    dat.fit <- dat.centered
+    n.cov <- 0L
+    if (covariate.adjusted) {
+      outcomes <- if (multi) c("y", "fuzzy") else "y"
+      gamma <- rd2d_covariate_gamma(
+        dat.centered, h.0, h.1, p, kernel, kernel_type, outcomes, cov.names
+      )
+      n.cov <- rd2d_covs_gamma_rank(gamma, cov.names)
+      dat.fit <- rd2d_apply_covariate_adjustment(
+        dat.centered, outcomes, cov.names, gamma
+      )
+    }
 
-    cov.half.consts.0 <- get_cov_half_v2(
-      dat.centered[dat.centered$d == 0,],
-      h.a.0, p, vce, kernel, kernel_type, cluster.0, clusters
+    half.0 <- get_half(
+      dat.fit[side.0,], h.0, p, vce.half, kernel, kernel_type,
+      cluster.0, clusters, cluster.df = cluster.df
     )
-    cov.half.consts.1 <- get_cov_half_v2(
-      dat.centered[dat.centered$d == 1,],
-      h.a.1, p, vce, kernel, kernel_type, cluster.1, clusters
+    half.1 <- get_half(
+      dat.fit[side.1,], h.1, p, vce.half, kernel, kernel_type,
+      cluster.1, clusters, cluster.df = cluster.df
     )
-    half.const.0 <- cov.half.consts.0$cov.half.const
-    half.const.1 <- cov.half.consts.1$cov.half.const
-    ind.0 <- cov.half.consts.0$ind
-    ind.1 <- cov.half.consts.1$ind
 
-    inds.0[[i]] <- ind.0
-    inds.1[[i]] <- ind.1
-    halves.0[[i]] <- half.const.0
-    halves.1[[i]] <- half.const.1
-
+    inds.0[[i]] <- half.0$ind
+    inds.1[[i]] <- half.1$ind
+    halves.0[[i]] <- half.0$cov.half.const
+    halves.1[[i]] <- half.1$cov.half.const
+    eN.0[i] <- sum(half.0$ind)
+    eN.1[i] <- sum(half.1$ind)
+    if (clustered) {
+      eC.0[[i]] <- cluster.0[half.0$ind]
+      eC.1[[i]] <- cluster.1[half.1$ind]
+    }
+    if ((joint || covariate.adjusted) && (vce == "hc1" || clustered)) {
+      eC.i <- if (clustered) c(eC.0[[i]], eC.1[[i]]) else NULL
+      if (joint) {
+        scale <- rd2d_joint_scale(
+          vce, eN.0[i] + eN.1[i], 2 * ncol(deriv) + n.cov,
+          eC.i, clustered
+        )
+        halves.0[[i]] <- halves.0[[i]] * scale
+        halves.1[[i]] <- halves.1[[i]] * scale
+      } else {
+        scale.0 <- rd2d_joint_scale(
+          vce, eN.0[i], ncol(deriv) + n.cov, eC.0[[i]], clustered
+        )
+        scale.1 <- rd2d_joint_scale(
+          vce, eN.1[i], ncol(deriv) + n.cov, eC.1[[i]], clustered
+        )
+        halves.0[[i]] <- halves.0[[i]] * scale.0
+        halves.1[[i]] <- halves.1[[i]] * scale.1
+      }
+    }
   }
 
   hgrid.1.use <- if (is.null(hgrid.1)) hgrid.0 else hgrid.1
-  projected.0 <- rd2d_project_cov_halves(
-    halves.0, inds.0, deriv, hgrid.0, p, clustered = !is.null(cluster)
+  projected.0 <- projected.1 <- NULL
+  if (!multi || !is.null(block)) {
+    projected.0 <- rd2d_project_cov_halves(
+      halves.0, inds.0, deriv, hgrid.0, p, clustered = clustered,
+      block = block
+    )
+    projected.1 <- rd2d_project_cov_halves(
+      halves.1, inds.1, deriv, hgrid.1.use, p, clustered = clustered,
+      block = block
+    )
+  }
+
+  list(
+    projected.0 = projected.0,
+    projected.1 = projected.1,
+    halves.0 = halves.0,
+    halves.1 = halves.1,
+    inds.0 = inds.0,
+    inds.1 = inds.1,
+    clustered = clustered,
+    joint = joint
   )
-  projected.1 <- rd2d_project_cov_halves(
-    halves.1, inds.1, deriv, hgrid.1.use, p, clustered = !is.null(cluster)
+}
+
+rdbw2d_cov <- function(dat, eval, deriv = NULL, o = 0, p = 1,
+                       hgrid.0, hgrid.1 = NULL, kernel = "epa",
+                       kernel_type = "prod", vce = "hc2", cluster = NULL,
+                       fitmethod = c("separate", "joint"),
+                       cov.names = NULL){
+  fitmethod <- match.arg(fitmethod)
+
+  projects <- rd2d_cov_project_sides(
+    dat, eval, deriv, p, hgrid.0, hgrid.1, kernel, kernel_type, vce,
+    cluster, fitmethod, multi = FALSE, cov.names = cov.names
   )
 
-  covs <- crossprod(projected.0) + crossprod(projected.1)
+  if (projects$clustered && projects$joint) {
+    covs <- crossprod(projects$projected.1 - projects$projected.0)
+  } else {
+    covs <- crossprod(projects$projected.0) + crossprod(projects$projected.1)
+  }
   covs <- (covs + t(covs)) / 2
   return(covs)
 }
@@ -895,59 +1368,20 @@ rdbw2d_cov <- function(dat, eval, deriv = NULL, o = 0, p = 1,
 rdbw2d_cov_side <- function(dat, eval, deriv = NULL, o = 0, p = 1,
                             hgrid.0, hgrid.1 = NULL, kernel = "epa",
                             kernel_type = "prod", vce = "hc2", cluster = NULL,
-                            side = 0){
-
-  dat <- dat[,c("x.1", "x.2", "y", "d")]
-  na.ok <- complete.cases(dat$x.1) & complete.cases(dat$x.2)
-  dat <- dat[na.ok,]
-  if (!is.null(cluster)) cluster <- cluster[na.ok]
+                            side = 0,
+                            fitmethod = c("separate", "joint"),
+                            cov.names = NULL){
+  fitmethod <- match.arg(fitmethod)
 
   if (!(side %in% c(0, 1))) {
     stop("side must be 0 or 1.", call. = FALSE)
   }
 
-  neval <- dim(eval)[1]
-  covs <- matrix(NA_real_, nrow = neval, ncol = neval)
-  halves <- list()
-  inds <- list()
-
-  clusters <- unique(cluster)
-  g <- length(clusters)
-
-  hgrid.0 <- as.matrix(hgrid.0)
-  if (!is.null(hgrid.1)) {
-    hgrid.1 <- as.matrix(hgrid.1)
-  }
-
-  for (i in 1:neval){
-
-    ev.a <- eval[i,]
-    h.a <- hgrid.0[i,]
-    if (side == 1 && !is.null(hgrid.1)) h.a <- hgrid.1[i,]
-
-    dat.centered <- dat[, c("x.1", "x.2", "y", "d")]
-    dat.centered$x.1 <- dat.centered$x.1 - ev.a$x.1
-    dat.centered$x.2 <- dat.centered$x.2 - ev.a$x.2
-    dat.centered$distance <- sqrt(dat.centered$x.1^2 + dat.centered$x.2^2)
-
-    side.ind <- dat.centered$d == side
-    cluster.side <- cluster[as.logical(side.ind)]
-
-    cov.half.consts <- get_cov_half_v2(
-      dat.centered[side.ind,],
-      h.a, p, vce, kernel, kernel_type, cluster.side, clusters
-    )
-
-    inds[[i]] <- cov.half.consts$ind
-    halves[[i]] <- cov.half.consts$cov.half.const
-  }
-
-  hgrid.use <- hgrid.0
-  if (side == 1 && !is.null(hgrid.1)) hgrid.use <- hgrid.1
-
-  projected <- rd2d_project_cov_halves(
-    halves, inds, deriv, hgrid.use, p, clustered = !is.null(cluster)
+  projects <- rd2d_cov_project_sides(
+    dat, eval, deriv, p, hgrid.0, hgrid.1, kernel, kernel_type, vce,
+    cluster, fitmethod, multi = FALSE, cov.names = cov.names
   )
+  projected <- if (side == 0) projects$projected.0 else projects$projected.1
   covs <- crossprod(projected)
   covs <- (covs + t(covs)) / 2
 
@@ -961,14 +1395,13 @@ rdbw2d_cov_fuzzy <- function(dat, eval, deriv = NULL, o = 0, p = 1,
                              hgrid.0, hgrid.1 = NULL, kernel = "epa",
                              kernel_type = "prod", vce = "hc2", cluster = NULL,
                              tau.itt, tau.fs,
-                             denom.tol = sqrt(.Machine$double.eps)){
+                             denom.tol = sqrt(.Machine$double.eps),
+                             fitmethod = c("separate", "joint"),
+                             cov.names = NULL){
+  fitmethod <- match.arg(fitmethod)
 
-  dat <- dat[,c("x.1", "x.2", "y", "d", "fuzzy")]
-  na.ok <- complete.cases(dat$x.1) &
-    complete.cases(dat$x.2) &
-    complete.cases(dat$y) &
-    complete.cases(dat$d) &
-    complete.cases(dat$fuzzy)
+  dat <- dat[,c("x.1", "x.2", "y", "d", "fuzzy", cov.names)]
+  na.ok <- complete.cases(dat)
   dat <- dat[na.ok,]
   if (!is.null(cluster)) cluster <- cluster[na.ok]
 
@@ -976,74 +1409,51 @@ rdbw2d_cov_fuzzy <- function(dat, eval, deriv = NULL, o = 0, p = 1,
   covs <- matrix(NA_real_, nrow = neval, ncol = neval)
   valid <- is.finite(tau.itt) & is.finite(tau.fs) & abs(tau.fs) > denom.tol
 
-  halves.0 <- list()
-  halves.1 <- list()
-  inds.0 <- list()
-  inds.1 <- list()
-
-  clusters <- unique(cluster)
-  g <- length(clusters)
-
   hgrid.0 <- as.matrix(hgrid.0)
   if (!is.null(hgrid.1)) {
     hgrid.1 <- as.matrix(hgrid.1)
-  }
-
-  for (i in 1:neval){
-
-    ev.a <- eval[i,]
-    h.a.0 <- hgrid.0[i,]
-    h.a.1 <- h.a.0
-    if (!is.null(hgrid.1)) h.a.1 <- hgrid.1[i,]
-
-    dat.centered <- dat[, c("x.1", "x.2", "y", "d", "fuzzy")]
-
-    dat.centered$x.1 <- dat.centered$x.1 - ev.a$x.1
-    dat.centered$x.2 <- dat.centered$x.2 - ev.a$x.2
-    dat.centered$distance <- sqrt(dat.centered$x.1^2 + dat.centered$x.2^2)
-
-    cluster.0 <- cluster[as.logical(dat.centered$d == 0)]
-    cluster.1 <- cluster[as.logical(dat.centered$d == 1)]
-
-    cov.half.consts.0 <- get_cov_half_multi_v2(
-      dat.centered[dat.centered$d == 0,],
-      h.a.0, p, vce, kernel, kernel_type, cluster.0, clusters
-    )
-    cov.half.consts.1 <- get_cov_half_multi_v2(
-      dat.centered[dat.centered$d == 1,],
-      h.a.1, p, vce, kernel, kernel_type, cluster.1, clusters
-    )
-
-    inds.0[[i]] <- cov.half.consts.0$ind
-    inds.1[[i]] <- cov.half.consts.1$ind
-    halves.0[[i]] <- cov.half.consts.0$cov.half.const
-    halves.1[[i]] <- cov.half.consts.1$cov.half.const
-
   }
 
   hgrid.1.use <- if (is.null(hgrid.1)) hgrid.0 else hgrid.1
   k <- ncol(deriv)
   y.idx <- seq_len(k)
   d.idx <- (k + 1):(2 * k)
-  clustered <- !is.null(cluster)
+  projects <- rd2d_cov_project_sides(
+    dat, eval, deriv, p, hgrid.0, hgrid.1, kernel, kernel_type, vce,
+    cluster, fitmethod, multi = TRUE, cov.names = cov.names
+  )
+  clustered <- projects$clustered
 
   y.0 <- rd2d_project_cov_halves(
-    halves.0, inds.0, deriv, hgrid.0, p, clustered, block = y.idx
+    projects$halves.0, projects$inds.0, deriv, hgrid.0, p, clustered,
+    block = y.idx
   )
   d.0 <- rd2d_project_cov_halves(
-    halves.0, inds.0, deriv, hgrid.0, p, clustered, block = d.idx
+    projects$halves.0, projects$inds.0, deriv, hgrid.0, p, clustered,
+    block = d.idx
   )
   y.1 <- rd2d_project_cov_halves(
-    halves.1, inds.1, deriv, hgrid.1.use, p, clustered, block = y.idx
+    projects$halves.1, projects$inds.1, deriv, hgrid.1.use, p, clustered,
+    block = y.idx
   )
   d.1 <- rd2d_project_cov_halves(
-    halves.1, inds.1, deriv, hgrid.1.use, p, clustered, block = d.idx
+    projects$halves.1, projects$inds.1, deriv, hgrid.1.use, p, clustered,
+    block = d.idx
   )
 
-  yy <- crossprod(y.0) + crossprod(y.1)
-  yd <- crossprod(y.0, d.0) + crossprod(y.1, d.1)
-  dy <- crossprod(d.0, y.0) + crossprod(d.1, y.1)
-  dd <- crossprod(d.0) + crossprod(d.1)
+  if (clustered && fitmethod == "joint") {
+    y <- y.1 - y.0
+    d <- d.1 - d.0
+    yy <- crossprod(y)
+    yd <- crossprod(y, d)
+    dy <- crossprod(d, y)
+    dd <- crossprod(d)
+  } else {
+    yy <- crossprod(y.0) + crossprod(y.1)
+    yd <- crossprod(y.0, d.0) + crossprod(y.1, d.1)
+    dy <- crossprod(d.0, y.0) + crossprod(d.1, y.1)
+    dd <- crossprod(d.0) + crossprod(d.1)
+  }
 
   a <- 1 / tau.fs
   b <- -tau.itt / tau.fs^2
@@ -1061,13 +1471,12 @@ rdbw2d_cov_fuzzy_tables <- function(dat, eval, deriv = NULL, o = 0, p = 1,
                                     hgrid.0, hgrid.1 = NULL, kernel = "epa",
                                     kernel_type = "prod", vce = "hc2",
                                     cluster = NULL, tau.itt, tau.fs, outputs,
-                                    denom.tol = sqrt(.Machine$double.eps)){
-  dat <- dat[,c("x.1", "x.2", "y", "d", "fuzzy")]
-  na.ok <- complete.cases(dat$x.1) &
-    complete.cases(dat$x.2) &
-    complete.cases(dat$y) &
-    complete.cases(dat$d) &
-    complete.cases(dat$fuzzy)
+                                    denom.tol = sqrt(.Machine$double.eps),
+                                    fitmethod = c("separate", "joint"),
+                                    cov.names = NULL){
+  fitmethod <- match.arg(fitmethod)
+  dat <- dat[,c("x.1", "x.2", "y", "d", "fuzzy", cov.names)]
+  na.ok <- complete.cases(dat)
   dat <- dat[na.ok,]
   if (!is.null(cluster)) cluster <- cluster[na.ok]
 
@@ -1080,69 +1489,55 @@ rdbw2d_cov_fuzzy_tables <- function(dat, eval, deriv = NULL, o = 0, p = 1,
   hgrid.0 <- as.matrix(hgrid.0)
   if (!is.null(hgrid.1)) hgrid.1 <- as.matrix(hgrid.1)
 
-  clusters <- unique(cluster)
-  halves.0.store <- halves.1.store <- vector("list", neval)
-  inds.0 <- inds.1 <- vector("list", neval)
-  side.0 <- dat$d == 0
-  side.1 <- dat$d == 1
-  cluster.0 <- cluster[side.0]
-  cluster.1 <- cluster[side.1]
-  dat.centered <- dat[, c("x.1", "x.2", "y", "d", "fuzzy")]
-
-  for (i in 1:neval){
-    ev.a <- eval[i,]
-    h.a.0 <- hgrid.0[i,]
-    h.a.1 <- h.a.0
-    if (!is.null(hgrid.1)) h.a.1 <- hgrid.1[i,]
-
-    dat.centered$x.1 <- dat$x.1 - ev.a$x.1
-    dat.centered$x.2 <- dat$x.2 - ev.a$x.2
-    dat.centered$distance <- sqrt(dat.centered$x.1^2 + dat.centered$x.2^2)
-
-    halves.0 <- get_cov_half_multi_v2(
-      dat.centered[side.0,],
-      h.a.0, p, vce, kernel, kernel_type, cluster.0, clusters
-    )
-    halves.1 <- get_cov_half_multi_v2(
-      dat.centered[side.1,],
-      h.a.1, p, vce, kernel, kernel_type, cluster.1, clusters
-    )
-
-    inds.0[[i]] <- halves.0$ind
-    inds.1[[i]] <- halves.1$ind
-    halves.0.store[[i]] <- halves.0$cov.half.const
-    halves.1.store[[i]] <- halves.1$cov.half.const
-  }
-
   hgrid.1.use <- if (is.null(hgrid.1)) hgrid.0 else hgrid.1
   k <- ncol(deriv)
   y.idx <- seq_len(k)
   d.idx <- (k + 1):(2 * k)
-  clustered <- !is.null(cluster)
+  projects <- rd2d_cov_project_sides(
+    dat, eval, deriv, p, hgrid.0, hgrid.1, kernel, kernel_type, vce,
+    cluster, fitmethod, multi = TRUE, cov.names = cov.names
+  )
+  clustered <- projects$clustered
 
   y.0 <- rd2d_project_cov_halves(
-    halves.0.store, inds.0, deriv, hgrid.0, p, clustered, block = y.idx
+    projects$halves.0, projects$inds.0, deriv, hgrid.0, p, clustered,
+    block = y.idx
   )
   d.0 <- rd2d_project_cov_halves(
-    halves.0.store, inds.0, deriv, hgrid.0, p, clustered, block = d.idx
+    projects$halves.0, projects$inds.0, deriv, hgrid.0, p, clustered,
+    block = d.idx
   )
   y.1 <- rd2d_project_cov_halves(
-    halves.1.store, inds.1, deriv, hgrid.1.use, p, clustered, block = y.idx
+    projects$halves.1, projects$inds.1, deriv, hgrid.1.use, p, clustered,
+    block = y.idx
   )
   d.1 <- rd2d_project_cov_halves(
-    halves.1.store, inds.1, deriv, hgrid.1.use, p, clustered, block = d.idx
+    projects$halves.1, projects$inds.1, deriv, hgrid.1.use, p, clustered,
+    block = d.idx
   )
 
   yy.0 <- crossprod(y.0)
   yy.1 <- crossprod(y.1)
   dd.0 <- crossprod(d.0)
   dd.1 <- crossprod(d.1)
-  yy <- yy.0 + yy.1
-  dd <- dd.0 + dd.1
+  if (clustered && fitmethod == "joint") {
+    y <- y.1 - y.0
+    d <- d.1 - d.0
+    yy <- crossprod(y)
+    dd <- crossprod(d)
+  } else {
+    yy <- yy.0 + yy.1
+    dd <- dd.0 + dd.1
+  }
 
   if ("main" %in% outputs) {
-    yd <- crossprod(y.0, d.0) + crossprod(y.1, d.1)
-    dy <- crossprod(d.0, y.0) + crossprod(d.1, y.1)
+    if (clustered && fitmethod == "joint") {
+      yd <- crossprod(y, d)
+      dy <- crossprod(d, y)
+    } else {
+      yd <- crossprod(y.0, d.0) + crossprod(y.1, d.1)
+      dy <- crossprod(d.0, y.0) + crossprod(d.1, y.1)
+    }
     a <- 1 / tau.fs
     b <- -tau.itt / tau.fs^2
     covs$main <- outer(a, a) * yy +
@@ -1169,7 +1564,19 @@ rdbw2d_se_fuzzy <- function(dat, eval, deriv = NULL, o = 0, p = 1,
                             hgrid.0, hgrid.1 = NULL, kernel = "epa",
                             kernel_type = "prod", vce = "hc2", cluster = NULL,
                             tau.itt, tau.fs, se.itt, se.fs,
-                            denom.tol = sqrt(.Machine$double.eps)){
+                            denom.tol = sqrt(.Machine$double.eps),
+                            fitmethod = c("separate", "joint"),
+                            cov.names = NULL){
+  fitmethod <- match.arg(fitmethod)
+
+  if (fitmethod == "joint" || !is.null(cov.names)) {
+    cov.main <- rdbw2d_cov_fuzzy(
+      dat, eval, deriv, o, p, hgrid.0, hgrid.1, kernel, kernel_type, vce,
+      cluster, tau.itt, tau.fs, denom.tol = denom.tol,
+      fitmethod = fitmethod, cov.names = cov.names
+    )
+    return(sqrt(pmax(diag(cov.main), 0)))
+  }
 
   dat <- dat[,c("x.1", "x.2", "y", "d", "fuzzy")]
   na.ok <- complete.cases(dat$x.1) &
@@ -1357,7 +1764,8 @@ rd2d_local_design <- function(dat, h, p, kernel, kernel_type, cluster = NULL,
 
 get_cov_half_v2 <- function(dat, h, p, vce = "hc1", kernel = "epa",
                             kernel_type = "prod",
-                            cluster = NULL, clusters = NULL){
+                            cluster = NULL, clusters = NULL,
+                            cluster.df = TRUE){
 
   loc <- rd2d_local_design(dat, h, p, kernel, kernel_type, cluster, outcomes = "y")
 
@@ -1413,7 +1821,11 @@ get_cov_half_v2 <- function(dat, h, p, vce = "hc1", kernel = "epa",
     n <- length(eC)
     g <- length(clusters)
     g.eff <- length(unique(eC))
-    w.w <- ((n-1)/(n-k))*(g.eff/(g.eff-1))
+    w.w <- if (cluster.df) {
+      ((n-1)/(n-k))*(g.eff/(g.eff-1))
+    } else {
+      1
+    }
 
     cov.half.const <- rd2d_cluster_sums(w_R * resd, eC, clusters) *
       sqrt(h.x * h.y * w.w)
@@ -1425,7 +1837,8 @@ get_cov_half_v2 <- function(dat, h, p, vce = "hc1", kernel = "epa",
 
 get_cov_half_multi_v2 <- function(dat, h, p, vce = "hc1",
                                   kernel = "epa", kernel_type = "prod",
-                                  cluster = NULL, clusters = NULL){
+                                  cluster = NULL, clusters = NULL,
+                                  cluster.df = TRUE){
 
   loc <- rd2d_local_design(
     dat, h, p, kernel, kernel_type, cluster, outcomes = c("y", "fuzzy")
@@ -1486,7 +1899,11 @@ get_cov_half_multi_v2 <- function(dat, h, p, vce = "hc1",
     n <- length(eC)
     g <- length(clusters)
     g.eff <- length(unique(eC))
-    w.w <- ((n-1)/(n-k))*(g.eff/(g.eff-1))
+    w.w <- if (cluster.df) {
+      ((n-1)/(n-k))*(g.eff/(g.eff-1))
+    } else {
+      1
+    }
 
     cov.half.const <- matrix(0, nrow = g, ncol = k * n.outcomes)
 

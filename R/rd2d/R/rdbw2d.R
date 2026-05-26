@@ -60,6 +60,21 @@
 #' \item \code{"off"}: ignores presence of mass points.
 #' }
 #' @param cluster Cluster ID variable used for cluster-robust variance estimation with degrees-of-freedom weights. Default is \code{cluster = NULL}.
+#' @param covs.eff Optional pre-intervention covariates used for efficiency
+#' adjustment. Must be a numeric vector, matrix, or data frame with the same
+#' number of rows as \code{Y}. Covariate coefficients are constrained to be
+#' common across treatment sides.
+#' @param covs.drop Logical. If \code{TRUE} (default), redundant covariate
+#' columns are dropped from the common covariate-adjustment solve when the
+#' residualized covariate matrix is rank deficient. If \code{FALSE}, a
+#' generalized inverse is used instead.
+#' @param covs.tol Positive numeric tolerance used to detect rank deficiency
+#' in residualized \code{covs.eff}. Default is \code{1e-12}.
+#' @param fitmethod Estimation method used for the variance constants entering
+#' bandwidth selection. \code{"joint"} (default) uses treatment-side interacted
+#' local polynomial fits with joint variance corrections, matching the default
+#' in \code{\link{rd2d}}. \code{"separate"} uses the legacy side-specific
+#' variance calculations.
 #' @param scaleregul Scaling factor for the regularization term in bandwidth selection. Default is 1.
 #' @param scalebiascrct Scaling factor used for bias correction based on higher order expansions. Default is 1.
 #' @param stdvars Logical. If \code{TRUE}, the running variables
@@ -90,10 +105,16 @@
 #'       \item{\code{bias.1}}{Bias constant estimate for the treatment group.}
 #'       \item{\code{var.0}}{Variance constant estimate for the control group.}
 #'       \item{\code{var.1}}{Variance constant estimate for the treatment group.}
+#'       \item{\code{var.01}}{Covariance constant between the control and
+#'       treatment variance scores, used by joint clustered common-bandwidth
+#'       selectors.}
 #'       \item{\code{reg.bias.0}}{Bias correction adjustment for the control group.}
 #'       \item{\code{reg.bias.1}}{Bias correction adjustment for the treatment group.}
 #'       \item{\code{reg.var.0}}{Variance of the bias estimate for the control group.}
 #'       \item{\code{reg.var.1}}{Variance of the bias estimate for the treatment group.}
+#'       \item{\code{reg.var.01}}{Covariance counterpart of \code{reg.var.0}
+#'       and \code{reg.var.1}, used by joint clustered common-bandwidth
+#'       selectors.}
 #'     }
 #'   }
 #'   \item{\code{opt}}{List containing:
@@ -106,6 +127,7 @@
 #'       \item{\code{bwparam}}{Target parameter for fuzzy bandwidth selection.}
 #'       \item{\code{method}}{Bandwidth estimation method.}
 #'       \item{\code{vce}}{Variance estimation method.}
+#'       \item{\code{fitmethod}}{Variance-fitting method used by the selector.}
 #'       \item{\code{scaleregul}}{Scaling factor for regularization.}
 #'       \item{\code{scalebiascrct}}{Scaling factor for bias correction.}
 #'       \item{\code{N}}{Total sample size \eqn{N}.}
@@ -166,7 +188,10 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
                    bwparam = c("main", "itt"),
                    method = c("dpi", "rot"), vce = c("hc1","hc0","hc2","hc3"),
                    bwcheck = 20, masspoints = c("check","adjust","off"),
-                   cluster = NULL, scaleregul = 1, scalebiascrct = 1,
+                   cluster = NULL, covs.eff = NULL,
+                   covs.drop = TRUE, covs.tol = 1e-12,
+                   fitmethod = c("joint", "separate"),
+                   scaleregul = 1, scalebiascrct = 1,
                    stdvars = TRUE, fuzzy = NULL){
 
   # Input error handling
@@ -180,6 +205,7 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
   method <- match.arg(method)
   vce <- match.arg(vce)
   masspoints <- match.arg(masspoints)
+  fitmethod <- match.arg(fitmethod)
   verbose <- FALSE
 
   d <- assignment # renaming the variable
@@ -188,71 +214,86 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
 
   # Check Errors
 
-  exit=0
+  exit <- 0
+  errors <- character(0)
+  rd2d_add_error <- function(message) {
+    errors <<- c(errors, paste(message, collapse = " "))
+    exit <<- 1
+    invisible(NULL)
+  }
 
-  if (length(Y) != length(d) || length(Y) != nrow(X)) {
-    print("Y, assignment, and rows of X must have the same length")
-    exit <- 1
+  valid.X <- is.matrix(X) || is.data.frame(X)
+  if (!valid.X || ncol(X) != 2) {
+    rd2d_add_error("X must be a matrix or data frame with exactly 2 columns")
+  } else if (length(Y) != length(d) || length(Y) != nrow(X)) {
+    rd2d_add_error("Y, assignment, and rows of X must have the same length")
   }
 
   if (is.fuzzy && length(fuzzy) != length(Y)) {
-    print("fuzzy must have the same length as Y")
-    exit <- 1
+    rd2d_add_error("fuzzy must have the same length as Y")
   }
 
   if (is.fuzzy && !(is.logical(fuzzy) || is.numeric(fuzzy))) {
-    print("fuzzy must be a logical or numeric vector")
-    exit <- 1
+    rd2d_add_error("fuzzy must be a logical or numeric vector")
   }
 
-  if (ncol(X) != 2) {
-    print("X must have exactly 2 columns")
-    exit <- 1
+  if (!is.null(cluster) && length(cluster) != length(Y)) {
+    rd2d_add_error("cluster must have the same length as Y")
+  }
+
+  cov.prep <- tryCatch(
+    rd2d_prepare_cov_eff(covs.eff, length(Y)),
+    error = function(e) {
+      rd2d_add_error(conditionMessage(e))
+      list(matrix = NULL, names = NULL)
+    }
+  )
+  rank.option.errors <- rd2d_validate_covs_rank_options(covs.drop, covs.tol)
+  if (length(rank.option.errors) > 0) {
+    for (err in rank.option.errors) rd2d_add_error(err)
   }
 
   if (!(is.logical(d) || all(d %in% c(0, 1)))) {
-    print("d must be a logical vector or a numeric vector containing only 0 and 1")
-    exit <- 1
+    rd2d_add_error("d must be a logical vector or a numeric vector containing only 0 and 1")
+  }
+
+  valid.b <- (is.matrix(b) || is.data.frame(b)) && ncol(b) == 2
+  if (!valid.b) {
+    rd2d_add_error("b must be a matrix or data frame with exactly 2 columns")
   }
 
   valid.p <- is.numeric(p) && length(p) == 1 &&
     is.finite(p) && p >= 0 &&
     abs(p - round(p)) < sqrt(.Machine$double.eps)
   if (!valid.p) {
-    print("p must be a nonnegative integer")
-    exit <- 1
+    rd2d_add_error("p must be a nonnegative integer")
   } else {
     p <- as.integer(round(p))
   }
 
   if (kernel!="gau" & kernel!="gaussian" & kernel!="uni" & kernel!="uniform" & kernel!="tri" & kernel!="triangular" & kernel!="epa" & kernel!="epanechnikov" & kernel!="" ){
-    print("kernel incorrectly specified")
-    exit <- 1
+    rd2d_add_error("kernel incorrectly specified")
   }
 
   valid.deriv <- is.numeric(deriv) && length(deriv) == 2 &&
     all(is.finite(deriv)) && all(deriv >= 0) &&
     all(abs(deriv - round(deriv)) < sqrt(.Machine$double.eps))
   if (!valid.deriv) {
-    print("deriv must be a nonnegative integer vector of length 2")
-    exit <- 1
+    rd2d_add_error("deriv must be a nonnegative integer vector of length 2")
   } else {
     deriv <- as.integer(round(deriv))
   }
   if (valid.deriv && valid.p && sum(deriv) > p) {
-    print("Sum of deriv components must be less than or equal to polynomial order p")
-    exit <- 1
+    rd2d_add_error("Sum of deriv components must be less than or equal to polynomial order p")
   }
 
   if (!is.null(tangvec)) {
     if (!(is.matrix(tangvec) || is.data.frame(tangvec)) ||
-        nrow(tangvec) != nrow(b) || ncol(tangvec) != 2) {
-      print("tangvec must be a matrix or data frame with the same number of rows as b and exactly 2 columns")
-      exit <- 1
+        !valid.b || nrow(tangvec) != nrow(b) || ncol(tangvec) != 2) {
+      rd2d_add_error("tangvec must be a matrix or data frame with the same number of rows as b and exactly 2 columns")
     }
     if (valid.p && p < 1) {
-      print("tangvec requires polynomial order p >= 1")
-      exit <- 1
+      rd2d_add_error("tangvec requires polynomial order p >= 1")
     }
   }
 
@@ -261,7 +302,7 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
     vce <- "hc1"
   }
 
-  if (exit>0) stop()
+  if (exit>0) rd2d_stop_errors(errors)
 
   # Data Cleaning
 
@@ -269,17 +310,25 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
   dat <- as.data.frame(dat)
   colnames(dat) <- c("x.1", "x.2", "y", "d")
   if (is.fuzzy) dat$fuzzy <- as.numeric(fuzzy)
+  cov.names <- cov.prep$names
+  if (!is.null(cov.prep$matrix)) {
+    dat <- cbind(dat, as.data.frame(cov.prep$matrix))
+  }
   eval.original <- as.data.frame(b)
   colnames(eval.original) <- c("x.1", "x.2")
   eval <- eval.original
   neval <- dim(eval)[1]
   na.ok <- complete.cases(dat$x.1) & complete.cases(dat$x.2) & complete.cases(dat$y) & complete.cases(dat$d)
   if (is.fuzzy) na.ok <- na.ok & complete.cases(dat$fuzzy)
+  if (!is.null(cov.names)) na.ok <- na.ok & complete.cases(dat[, cov.names, drop = FALSE])
+  if (!is.null(cluster)) na.ok <- na.ok & complete.cases(cluster)
   dat <- dat[na.ok,]
   if (!is.null(cluster)) cluster <- cluster[na.ok]
   N <- dim(dat)[1]
   N.0 <- dim(dat[dat$d == 0,])[1]
   N.1 <- dim(dat[dat$d == 1,])[1]
+  rd2d_covs_rank_begin(cov.names, covs.drop, covs.tol)
+  on.exit(rd2d_covs_rank_end(), add = TRUE)
 
   if (is.null(p))         p <- 1
   kernel   <- tolower(kernel)
@@ -360,9 +409,11 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
   )
 
   # Loop over points of evaluations
-  results <- data.frame(matrix(NA, ncol = 16, nrow = neval))
+  results <- data.frame(matrix(NA, ncol = 18, nrow = neval))
   colnames(results) <- c('b1','b2','h01', 'h02', 'h11', 'h12', 'N.Co', 'N.Tr',
-                         'bias.0', 'bias.1', 'var.0', 'var.1','reg.bias.0','reg.bias.1','reg.var.0','reg.var.1')
+                         'bias.0', 'bias.1', 'var.0', 'var.1', 'var.01',
+                         'reg.bias.0','reg.bias.1','reg.var.0','reg.var.1',
+                         'reg.var.01')
 
   for (i in 1:neval){
 
@@ -371,7 +422,7 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
 
     # Center data
 
-    dat.centered <- dat[,c("x.1", "x.2", "y", "d", if (is.fuzzy) "fuzzy")]
+    dat.centered <- dat[,c("x.1", "x.2", "y", "d", if (is.fuzzy) "fuzzy", cov.names)]
     dat.centered$x.1 <- dat.centered$x.1 - ev$x.1
     dat.centered$x.2 <- dat.centered$x.2 - ev$x.2
     dat.centered$distance <- sqrt(dat.centered$x.1^2 + dat.centered$x.2^2)
@@ -401,12 +452,24 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
     dat.bw.1 <- dat.centered.1
 
     if (is.fuzzy && bwparam == "main") {
+      dat.grad <- dat.centered
+      if (!is.null(cov.names)) {
+        gamma.grad <- rd2d_covariate_gamma(
+          dat.centered, dn.0, dn.1, p, kernel, kernel_type,
+          c("y", "fuzzy"), cov.names
+        )
+        dat.grad <- rd2d_apply_covariate_adjustment(
+          dat.centered, c("y", "fuzzy"), cov.names, gamma.grad
+        )
+      }
+      dat.grad.0 <- dat.grad[side.0, , drop = FALSE]
+      dat.grad.1 <- dat.grad[side.1, , drop = FALSE]
       fit.grad.0 <- rd2d_lm_multi(
-        dat.centered.0, dn.0, p, vce, kernel, kernel_type,
+        dat.grad.0, dn.0, p, vce, kernel, kernel_type,
         cluster.0, varr = FALSE, outcomes = c("y", "fuzzy")
       )
       fit.grad.1 <- rd2d_lm_multi(
-        dat.centered.1, dn.1, p, vce, kernel, kernel_type,
+        dat.grad.1, dn.1, p, vce, kernel, kernel_type,
         cluster.1, varr = FALSE, outcomes = c("y", "fuzzy")
       )
       tau.itt.grad <- (vec %*% fit.grad.1$beta[, "y", drop = FALSE] -
@@ -426,6 +489,10 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
       }
     }
 
+    dat.bw.all <- dat.centered
+    dat.bw.all$y[side.0] <- dat.bw.0$y
+    dat.bw.all$y[side.1] <- dat.bw.1$y
+
     if (kernel_type == "prod"){
       w.0 <- kernel_weight(dat.centered.0$x.1/dn.0, kernel) *
              kernel_weight(dat.centered.0$x.2/dn.0, kernel) / c(dn.0^2)
@@ -439,6 +506,10 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
 
     eN.0 <- sum(w.0 > 0)
     eN.1 <- sum(w.1 > 0)
+    joint.info.dn <- rdbw2d_joint_effective_info(
+      dat.centered.0, dat.centered.1, dn.0, dn.1, kernel, kernel_type,
+      cluster.0, cluster.1
+    )
 
     vec.q.0 <- get_coeff(dat.centered.0, vec, p, dn.0, kernel, kernel_type)
     vec.q.1 <- get_coeff(dat.centered.1, vec, p, dn.1, kernel, kernel_type)
@@ -449,14 +520,40 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
 
     thrshd.0 <- median(dat.centered.0$distance)
     thrshd.1 <- median(dat.centered.1$distance)
+    joint.info.thrshd <- rdbw2d_joint_effective_info(
+      dat.centered.0, dat.centered.1, thrshd.0, thrshd.1, kernel,
+      kernel_type, cluster.0, cluster.1
+    )
 
     bn.0 <- thrshd.0 # If method is "rot", use half of control data to estimate (p+1)th derivative of control.
     bn.1 <- thrshd.1 # If method is "rot", use half of treated data to estimate (p+1)th derivative of treated.
 
     if (method == "dpi"){
+      gamma.v.bn <- gamma.b.bn <- NULL
+      if (!is.null(cov.names)) {
+        gamma.v.bn <- rd2d_covariate_gamma(
+          dat.bw.all, dn.0, dn.1, p + 1, kernel, kernel_type, "y", cov.names
+        )
+        gamma.b.bn <- rd2d_covariate_gamma(
+          dat.bw.all, thrshd.0, thrshd.1, p + 2, kernel, kernel_type,
+          "y", cov.names
+        )
+      }
 
-      bn.const.0 <- rdbw2d_bw_v2(dat.bw.0, p + 1, vec.q.0, dn.0, thrshd.0, NULL, vce, kernel, kernel_type, cluster.0)
-      bn.const.1 <- rdbw2d_bw_v2(dat.bw.1, p + 1, vec.q.1, dn.1, thrshd.1, NULL, vce, kernel, kernel_type, cluster.1)
+      bn.const.0 <- rdbw2d_bw_v2(
+        dat.bw.0, p + 1, vec.q.0, dn.0, thrshd.0, NULL, vce,
+        kernel, kernel_type, cluster.0, fitmethod = fitmethod,
+        clusters = unique(cluster), joint.info.v = joint.info.dn,
+        joint.info.b = joint.info.thrshd, cov.names = cov.names,
+        gamma.v = gamma.v.bn, gamma.b = gamma.b.bn
+      )
+      bn.const.1 <- rdbw2d_bw_v2(
+        dat.bw.1, p + 1, vec.q.1, dn.1, thrshd.1, NULL, vce,
+        kernel, kernel_type, cluster.1, fitmethod = fitmethod,
+        clusters = unique(cluster), joint.info.v = joint.info.dn,
+        joint.info.b = joint.info.thrshd, cov.names = cov.names,
+        gamma.v = gamma.v.bn, gamma.b = gamma.b.bn
+      )
 
       bn.0 <-  ((2 + 2 * (p+1)) * bn.const.0$V  / ( (2 * (p + 1) + 2 - 2 * (p+1)) * (bn.const.0$B^2 + scaleregul * bn.const.0$Reg.1) ) )^(1/(2 * p + 6))
       bn.1 <-  ((2 + 2 * (p+1)) * bn.const.1$V  / ( (2 * (p + 1) + 2 - 2 * (p+1)) * (bn.const.1$B^2 + scaleregul * bn.const.1$Reg.1) ) )^(1/(2 * p + 6))
@@ -475,14 +572,55 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
 
     # Bandwidth for estimating (derivatives of) treatment effect using p-th degree model.
 
+    joint.info.bn <- rdbw2d_joint_effective_info(
+      dat.centered.0, dat.centered.1, bn.0, bn.1, kernel, kernel_type,
+      cluster.0, cluster.1
+    )
+    var.01 <- 0
+    reg.var.01 <- 0
+    gamma.v.hn <- gamma.b.hn <- gamma.t.hn <- NULL
+    if (!is.null(cov.names)) {
+      gamma.v.hn <- rd2d_covariate_gamma(
+        dat.bw.all, dn.0, dn.1, p, kernel, kernel_type, "y", cov.names
+      )
+      gamma.b.hn <- rd2d_covariate_gamma(
+        dat.bw.all, bn.0, bn.1, p + 1, kernel, kernel_type, "y", cov.names
+      )
+      gamma.t.hn <- rd2d_covariate_gamma(
+        dat.bw.all, thrshd.0, thrshd.1, p + 2, kernel, kernel_type,
+        "y", cov.names
+      )
+    }
+
     if (bwselect.base == "mserd" | bwselect.base == "imserd"){
 
-      hn.const.0 <- rdbw2d_bw_v2(dat.bw.0, p, vec, dn.0, bn.0, thrshd.0, vce, kernel, kernel_type, cluster.0)
-      hn.const.1 <- rdbw2d_bw_v2(dat.bw.1, p, vec, dn.1, bn.1, thrshd.1, vce, kernel, kernel_type, cluster.1)
+      hn.const.0 <- rdbw2d_bw_v2(
+        dat.bw.0, p, vec, dn.0, bn.0, thrshd.0, vce, kernel,
+        kernel_type, cluster.0, fitmethod = fitmethod,
+        clusters = unique(cluster), joint.info.v = joint.info.dn,
+        joint.info.b = joint.info.bn, cov.names = cov.names,
+        gamma.v = gamma.v.hn, gamma.b = gamma.b.hn, gamma.t = gamma.t.hn
+      )
+      hn.const.1 <- rdbw2d_bw_v2(
+        dat.bw.1, p, vec, dn.1, bn.1, thrshd.1, vce, kernel,
+        kernel_type, cluster.1, fitmethod = fitmethod,
+        clusters = unique(cluster), joint.info.v = joint.info.dn,
+        joint.info.b = joint.info.bn, cov.names = cov.names,
+        gamma.v = gamma.v.hn, gamma.b = gamma.b.hn, gamma.t = gamma.t.hn
+      )
 
-      hn <- ( (2 + 2 * deriv.sum) * (hn.const.0$V   + hn.const.1$V) /
+      if (fitmethod == "joint" && !is.null(cluster)) {
+        var.01 <- as.numeric(crossprod(hn.const.0$V.half, hn.const.1$V.half))
+        reg.var.01 <- as.numeric(crossprod(
+          hn.const.0$Reg.1.half, hn.const.1$Reg.1.half
+        ))
+      }
+      V.diff <- hn.const.0$V + hn.const.1$V - 2 * var.01
+      Reg.diff <- hn.const.0$Reg.1 + hn.const.1$Reg.1 - 2 * reg.var.01
+
+      hn <- ( (2 + 2 * deriv.sum) * V.diff /
                 ( (2 * p + 2 - 2 * deriv.sum) * ( (hn.const.0$B + scalebiascrct * hn.const.0$Reg.2 - hn.const.1$B - scalebiascrct * hn.const.1$Reg.2)^2 +
-                                     scaleregul * hn.const.0$Reg.1 + scaleregul * hn.const.1$Reg.1) ) )^(1/(2 * p + 4))
+                                     scaleregul * Reg.diff) ) )^(1/(2 * p + 4))
 
       if (!is.null(bwcheck)) { # Bandwidth restrictions
         hn     <- max(hn, bw.min.0, bw.min.1)
@@ -494,8 +632,20 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
 
     if (bwselect.base == "msetwo" | bwselect.base == "imsetwo"){
 
-      hn.const.0 <- rdbw2d_bw_v2(dat.bw.0, p, vec, dn.0, bn.0, thrshd.0, vce, kernel, kernel_type, cluster.0)
-      hn.const.1 <- rdbw2d_bw_v2(dat.bw.1, p, vec, dn.1, bn.1, thrshd.1, vce, kernel, kernel_type, cluster.1)
+      hn.const.0 <- rdbw2d_bw_v2(
+        dat.bw.0, p, vec, dn.0, bn.0, thrshd.0, vce, kernel,
+        kernel_type, cluster.0, fitmethod = fitmethod,
+        clusters = unique(cluster), joint.info.v = joint.info.dn,
+        joint.info.b = joint.info.bn, cov.names = cov.names,
+        gamma.v = gamma.v.hn, gamma.b = gamma.b.hn, gamma.t = gamma.t.hn
+      )
+      hn.const.1 <- rdbw2d_bw_v2(
+        dat.bw.1, p, vec, dn.1, bn.1, thrshd.1, vce, kernel,
+        kernel_type, cluster.1, fitmethod = fitmethod,
+        clusters = unique(cluster), joint.info.v = joint.info.dn,
+        joint.info.b = joint.info.bn, cov.names = cov.names,
+        gamma.v = gamma.v.hn, gamma.b = gamma.b.hn, gamma.t = gamma.t.hn
+      )
 
       hn.0 <- ( (2 + 2 * deriv.sum) * hn.const.0$V /
                 ( deriv.denom * ( (hn.const.0$B + scalebiascrct * hn.const.0$Reg.2)^2 + scaleregul * hn.const.0$Reg.1) ) )^(1/(2 * p + 4))
@@ -511,13 +661,18 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
     }
 
     results[i,c(1:2)] <- c(ev$x.1, ev$x.2)
-    results[i,c(3:16)] <- c(hn.0, hn.0, hn.1, hn.1, eN.0, eN.1, hn.const.0$B, hn.const.1$B, hn.const.0$V, hn.const.1$V, hn.const.0$Reg.2, hn.const.1$Reg.2,
-                            hn.const.0$Reg.1, hn.const.1$Reg.1)
+    results[i,c(3:18)] <- c(hn.0, hn.0, hn.1, hn.1, eN.0, eN.1,
+                            hn.const.0$B, hn.const.1$B,
+                            hn.const.0$V, hn.const.1$V, var.01,
+                            hn.const.0$Reg.2, hn.const.1$Reg.2,
+                            hn.const.0$Reg.1, hn.const.1$Reg.1,
+                            reg.var.01)
   }
 
   if (bwselect.base == "imserd"){
-    V.V <- mean(results$var.0) + mean(results$var.1)
-    B.B <- mean( (results$bias.0 + scalebiascrct * results$reg.bias.0 - results$bias.1 - scalebiascrct * results$reg.bias.1)^2 + scaleregul * results$reg.var.0 + scaleregul * results$reg.var.1 )
+    V.V <- mean(results$var.0 + results$var.1 - 2 * results$var.01)
+    B.B <- mean( (results$bias.0 + scalebiascrct * results$reg.bias.0 - results$bias.1 - scalebiascrct * results$reg.bias.1)^2 +
+                   scaleregul * (results$reg.var.0 + results$reg.var.1 - 2 * results$reg.var.01) )
     hIMSE <- ((2 + 2 * deriv.sum) * V.V / ( deriv.denom * B.B ) )^(1/(2 * p + 4))
     results$h01 <- rep(hIMSE, dim(results)[1])
     results$h02 <- rep(hIMSE, dim(results)[1])
@@ -570,6 +725,7 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
 
   clustered <- !is.null(cluster)
 
+  covs.rank <- rd2d_covs_rank_summary()
   out        <- list(bws = bws, mseconsts = results,
                      opt = list(N=N, N.0 = N.0, N.1 = N.1,M.0 = M.0,
                                            M.1 = M.1, neval=neval, p=p, deriv=deriv, tangvec = tangvec,
@@ -578,6 +734,15 @@ rdbw2d <- function(Y, X, assignment, b, p = 1, deriv = c(0,0), tangvec = NULL,
                                            method = method, bwcheck = bwcheck,
                                            stdvars = stdvars, fuzzy = is.fuzzy,
                                            cluster= cluster, clustered = clustered,
+                                           covs.eff = !is.null(cov.names),
+                                           N.covs.eff = length(cov.names),
+                                           N.covs.used = covs.rank$used,
+                                           covs.dropped = covs.rank$dropped,
+                                           covs.redundant = covs.rank$redundant,
+                                           covs.rank.deficient = covs.rank$rank.deficient,
+                                           covs.drop = covs.drop,
+                                           covs.tol = covs.tol,
+                                           fitmethod = fitmethod,
                                            vce = vce, masspoints = masspoints,
                                            scaleregul = scaleregul, scalebiascrct = scalebiascrct))
   out$call   <- match.call()
@@ -615,6 +780,8 @@ print.rdbw2d <- function(x,...){
   cat(sprintf("BW type.               %s\n", paste(x$opt$bwselect, x$opt$method, sep = "-")))
   cat(sprintf("Kernel                 %s\n", paste(tolower(x$opt$kernel), x$opt$kernel_type, sep = "-")))
   cat(sprintf("VCE method             %s\n", paste(x$opt$vce, ifelse(x$opt$clustered, "-clustered", ""),sep = "")))
+  cat(sprintf("Fit method             %s\n", x$opt$fitmethod))
+  rd2d_print_covs_eff(x$opt)
   cat(sprintf("Masspoints             %s\n", x$opt$masspoints))
   cat(sprintf("Standardization        %s\n", ifelse(x$opt$stdvars, "on", "off")))
   if (isTRUE(x$opt$fuzzy)) cat(sprintf("BW target              %s\n", x$opt$bwparam))
@@ -679,6 +846,8 @@ summary.rdbw2d <- function(object, ...) {
   cat(sprintf("BW type.               %s\n", paste(x$opt$bwselect, x$opt$method, sep = "-")))
   cat(sprintf("Kernel                 %s\n", paste(tolower(x$opt$kernel), x$opt$kernel_type, sep = "-")))
   cat(sprintf("VCE method             %s\n", paste(x$opt$vce, ifelse(x$opt$clustered, "-clustered", ""),sep = "")))
+  cat(sprintf("Fit method             %s\n", x$opt$fitmethod))
+  rd2d_print_covs_eff(x$opt)
   cat(sprintf("Masspoints             %s\n", x$opt$masspoints))
   cat(sprintf("Standardization        %s\n", ifelse(x$opt$stdvars, "on", "off")))
   if (isTRUE(x$opt$fuzzy)) cat(sprintf("BW target              %s\n", x$opt$bwparam))

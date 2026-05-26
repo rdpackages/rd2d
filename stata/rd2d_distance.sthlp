@@ -1,5 +1,5 @@
 {smcl}
-{* *!version 0.2.0  2026-05-23}{...}
+{* *!version 1.0.0  2026-05-26}{...}
 {title:Title}
 
 {p 4 8}{cmd:rd2d_distance} {hline 2} Alias for {help rd2d_dist:rd2d_dist}.{p_end}

@@ -16,12 +16,17 @@ from ._utils import (
     ci_columns,
     complete_cases,
     covariance_from_influence,
+    CovariateRankTracker,
     kernel_weights,
     local_fit_targets,
     normalize_binary,
     p_values,
+    prepare_covs_eff,
+    solve_covariate_gamma,
     target_2d,
+    validate_covs_rank_options,
     validate_deriv,
+    validate_fitmethod,
     validate_order,
 )
 from .results import RD2DResult
@@ -64,18 +69,21 @@ def _is_common(bwselect: str) -> bool:
     return _bwselect_base(bwselect) in {"mserd", "imserd"}
 
 
-def _clean_location_inputs(y, x, assignment, b, fuzzy=None, cluster=None):
+def _clean_location_inputs(y, x, assignment, b, fuzzy=None, cluster=None, covs_eff=None):
     y = as_1d(y, "Y")
     x = as_2d(x, "X", ncol=2)
     assignment = normalize_binary(assignment, "assignment")
     b = as_2d(b, "b", ncol=2)
     check_lengths(y, x, assignment)
+    covs_eff, cov_names = prepare_covs_eff(covs_eff, len(y))
 
     arrays = [y, x, assignment.astype(float)]
     if fuzzy is not None:
         fuzzy = as_1d(fuzzy, "fuzzy")
         check_lengths(y, fuzzy)
         arrays.append(fuzzy)
+    if covs_eff is not None:
+        arrays.append(covs_eff)
     if cluster is not None:
         cluster = np.asarray(cluster)
         check_lengths(y, cluster)
@@ -87,9 +95,11 @@ def _clean_location_inputs(y, x, assignment, b, fuzzy=None, cluster=None):
     assignment = assignment[keep]
     if fuzzy is not None:
         fuzzy = fuzzy[keep]
+    if covs_eff is not None:
+        covs_eff = covs_eff[keep, :]
     if cluster is not None:
         cluster = np.asarray(cluster)[keep]
-    return y, x, assignment, b, fuzzy, cluster
+    return y, x, assignment, b, fuzzy, cluster, covs_eff, cov_names
 
 
 def _parse_location_h(h, neval: int) -> tuple[np.ndarray, np.ndarray]:
@@ -299,11 +309,19 @@ def _bw_v2_exact(
     kernel: str,
     kernel_type: str,
     cluster=None,
+    y_var: np.ndarray | None = None,
+    y_bias: np.ndarray | None = None,
+    y_reg2: np.ndarray | None = None,
+    scale_var: float | None = None,
+    scale_bias: float | None = None,
 ) -> dict[str, float]:
+    y_var = y if y_var is None else np.asarray(y_var, dtype=float)
+    y_bias = y if y_bias is None else np.asarray(y_bias, dtype=float)
+    y_reg2 = y if y_reg2 is None else np.asarray(y_reg2, dtype=float)
     w = _exact_kernel_weights(x, distance, dn, kernel, kernel_type)
     keep = w > 0
     ew = w[keep]
-    eY = y[keep]
+    eY = y_var[keep]
     hxy = _hxy(_h_normalize(dn, kernel_type))
     eu = np.column_stack([x[keep, 0] / hxy[0], x[keep, 1] / hxy[1]])
 
@@ -345,7 +363,7 @@ def _bw_v2_exact(
 
     eN = int(np.sum(keep))
     k = eR.shape[1]
-    if vce == "hc1" and eN > k:
+    if scale_var is None and vce == "hc1" and eN > k:
         resd = resd * np.sqrt(eN / (eN - k))
     elif vce in {"hc2", "hc3"}:
         hii = np.sum((sqrtw_R @ invG) * sqrtw_R, axis=1)
@@ -356,14 +374,19 @@ def _bw_v2_exact(
 
     sigma = _vce_const(w_R, resd, hxy, cluster=cluster[keep] if cluster is not None else None)
     V = float(np.asarray(vec.reshape(1, -1) @ invG.T @ sigma @ invG @ vec.reshape(-1, 1)).item())
+    if scale_var is not None:
+        V *= float(scale_var)
 
-    fit_p1 = _lm_exact(x, y, distance, bn1, p + 1, vce, kernel, kernel_type, cluster=cluster, varr=True)
+    fit_p1_vce = "hc0" if scale_bias is not None and vce == "hc1" else vce
+    fit_p1 = _lm_exact(x, y_bias, distance, bn1, p + 1, fit_p1_vce, kernel, kernel_type, cluster=cluster, varr=True)
     B = float(np.asarray(vec_q.reshape(1, -1) @ fit_p1["beta"].reshape(-1, 1)).item())
     Reg1 = float(np.asarray(vec_q.reshape(1, -1) @ fit_p1["cov_const"] @ vec_q.reshape(-1, 1) / (bn1 ** (2 + 2 * (p + 1)))).item())
+    if scale_bias is not None:
+        Reg1 *= float(scale_bias)
 
     Reg2 = np.nan
     if bn2 is not None and vec_t is not None:
-        fit_p2 = _lm_exact(x, y, distance, bn2, p + 2, vce, kernel, kernel_type, cluster=cluster, varr=False)
+        fit_p2 = _lm_exact(x, y_reg2, distance, bn2, p + 2, vce, kernel, kernel_type, cluster=cluster, varr=False)
         Reg2 = float(np.asarray((dn * vec_t.reshape(1, -1)) @ fit_p2["beta"].reshape(-1, 1)).item())
 
     return {"B": B, "V": V, "Reg.2": Reg2, "Reg.1": Reg1}
@@ -500,6 +523,10 @@ def rdbw2d(
     scalebiascrct: float = 1.0,
     stdvars: bool = True,
     fuzzy=None,
+    covs_eff=None,
+    covs_drop: bool = True,
+    covs_tol: float = 1e-12,
+    fitmethod: str = "joint",
 ) -> RD2DResult:
     """Bandwidth selection for location-based boundary discontinuity designs.
 
@@ -509,7 +536,12 @@ def rdbw2d(
     ``h11``, ``h12``, ``N.Co``, and ``N.Tr``.
     """
 
-    y, x, d, b, fuzzy, cluster = _clean_location_inputs(Y, X, assignment, b, fuzzy, cluster)
+    y, x, d, b, fuzzy, cluster, covs_eff, cov_names = _clean_location_inputs(
+        Y, X, assignment, b, fuzzy, cluster, covs_eff
+    )
+    fitmethod = validate_fitmethod(fitmethod)
+    covs_drop, covs_tol = validate_covs_rank_options(covs_drop, covs_tol)
+    rank_tracker = CovariateRankTracker(cov_names, covs_drop, covs_tol)
     p = validate_order(p, "p")
     deriv = validate_deriv(deriv, p)
     tangvec_arr = None if tangvec is None else as_2d(tangvec, "tangvec", ncol=2)
@@ -586,19 +618,81 @@ def rdbw2d(
             bw_min0 = bw_min1 = 0.0
             bw_max0 = bw_max1 = np.inf
 
-        y_bw = y.copy()
+        y_base = y
+        fuzzy_base = fuzzy
+        if covs_eff is not None:
+            outcomes_gamma = np.column_stack([y, fuzzy]) if fuzzy is not None and bwparam == "main" else y.reshape(-1, 1)
+            gamma, _ = _location_covariate_gamma(
+                centered,
+                d,
+                outcomes_gamma,
+                covs_eff,
+                np.repeat(dn0, 2),
+                np.repeat(dn1, 2),
+                p,
+                kernel,
+                kernel_type,
+                cov_names,
+                rank_tracker,
+                covs_drop,
+                covs_tol,
+            )
+            adjusted = _adjust_outcomes(outcomes_gamma, covs_eff, gamma)
+            y_base = adjusted[:, 0]
+            if fuzzy is not None and bwparam == "main":
+                fuzzy_base = adjusted[:, 1]
+
+        y_bw = y_base.copy()
         if fuzzy is not None and bwparam == "main":
-            outcomes = np.column_stack([y, fuzzy])
+            outcomes = np.column_stack([y_base, fuzzy_base])
             side0 = ~d
             side1 = d
-            fit_grad0 = _lm_multi_exact(centered[side0], y[side0], radial[side0], outcomes[side0], dn0, p, vce, kernel, kernel_type)
-            fit_grad1 = _lm_multi_exact(centered[side1], y[side1], radial[side1], outcomes[side1], dn1, p, vce, kernel, kernel_type)
+            fit_grad0 = _lm_multi_exact(centered[side0], y_base[side0], radial[side0], outcomes[side0], dn0, p, vce, kernel, kernel_type)
+            fit_grad1 = _lm_multi_exact(centered[side1], y_base[side1], radial[side1], outcomes[side1], dn1, p, vce, kernel, kernel_type)
             tau_itt_grad = float(vec @ fit_grad1["beta"][:, 0] - vec @ fit_grad0["beta"][:, 0])
             tau_fs_grad = float(vec @ fit_grad1["beta"][:, 1] - vec @ fit_grad0["beta"][:, 1])
             if np.isfinite(tau_fs_grad) and abs(tau_fs_grad) > np.sqrt(np.finfo(float).eps):
                 grad_itt = 1.0 / tau_fs_grad
                 grad_fs = -tau_itt_grad / (tau_fs_grad ** 2)
-                y_bw = grad_itt * y + grad_fs * fuzzy
+                y_bw = grad_itt * y_base + grad_fs * fuzzy_base
+
+        def adjusted_y(order: int, h_left: float, h_right: float) -> tuple[np.ndarray, int]:
+            if covs_eff is None:
+                return y_bw, 0
+            gamma_i, rank_i = _location_covariate_gamma(
+                centered,
+                d,
+                y_bw.reshape(-1, 1),
+                covs_eff,
+                np.repeat(h_left, 2),
+                np.repeat(h_right, 2),
+                order,
+                kernel,
+                kernel_type,
+                cov_names,
+                rank_tracker,
+                covs_drop,
+                covs_tol,
+            )
+            return _adjust_outcomes(y_bw.reshape(-1, 1), covs_eff, gamma_i)[:, 0], rank_i
+
+        def effective_counts(h_left: float, h_right: float) -> tuple[int, int]:
+            n_left = int(np.sum(_exact_kernel_weights(centered[side0], radial[side0], h_left, kernel, kernel_type) > 0))
+            n_right = int(np.sum(_exact_kernel_weights(centered[side1], radial[side1], h_right, kernel, kernel_type) > 0))
+            return n_left, n_right
+
+        def bw_scales(order: int, h_left: float, h_right: float, n_cov_i: int) -> tuple[float | None, float | None]:
+            if vce != "hc1" or (fitmethod != "joint" and covs_eff is None):
+                return None, None
+            n_left, n_right = effective_counts(h_left, h_right)
+            k_order = _basis_count_2d(order)
+            if fitmethod == "joint":
+                scale = _variance_scale(vce, n_left + n_right, 2 * k_order + n_cov_i, None, False)
+                return scale, scale
+            return (
+                _variance_scale(vce, n_left, k_order + n_cov_i, None, False),
+                _variance_scale(vce, n_right, k_order + n_cov_i, None, False),
+            )
 
         side0 = ~d
         side1 = d
@@ -615,16 +709,95 @@ def rdbw2d(
         bn1v = thr1
 
         if method == "dpi":
-            bn_const0 = _bw_v2_exact(centered[side0], y_bw[side0], radial[side0], p + 1, vec_q0, dn0, thr0, None, vce, kernel, kernel_type)
-            bn_const1 = _bw_v2_exact(centered[side1], y_bw[side1], radial[side1], p + 1, vec_q1, dn1, thr1, None, vce, kernel, kernel_type)
+            y_bn_v, n_cov_bn_v = adjusted_y(p + 1, dn0, dn1)
+            y_bn_b, n_cov_bn_b = adjusted_y(p + 2, thr0, thr1)
+            scale_bn_v0, scale_bn_v1 = bw_scales(p + 1, dn0, dn1, n_cov_bn_v)
+            scale_bn_b0, scale_bn_b1 = bw_scales(p + 2, thr0, thr1, n_cov_bn_b)
+            bn_const0 = _bw_v2_exact(
+                centered[side0],
+                y_bw[side0],
+                radial[side0],
+                p + 1,
+                vec_q0,
+                dn0,
+                thr0,
+                None,
+                vce,
+                kernel,
+                kernel_type,
+                cluster=cluster[side0] if cluster is not None else None,
+                y_var=y_bn_v[side0],
+                y_bias=y_bn_b[side0],
+                scale_var=scale_bn_v0,
+                scale_bias=scale_bn_b0,
+            )
+            bn_const1 = _bw_v2_exact(
+                centered[side1],
+                y_bw[side1],
+                radial[side1],
+                p + 1,
+                vec_q1,
+                dn1,
+                thr1,
+                None,
+                vce,
+                kernel,
+                kernel_type,
+                cluster=cluster[side1] if cluster is not None else None,
+                y_var=y_bn_v[side1],
+                y_bias=y_bn_b[side1],
+                scale_var=scale_bn_v1,
+                scale_bias=scale_bn_b1,
+            )
             bn0 = ((2 + 2 * (p + 1)) * bn_const0["V"] / (2 * (bn_const0["B"] ** 2 + scaleregul * bn_const0["Reg.1"]))) ** (1.0 / (2 * p + 6))
             bn1v = ((2 + 2 * (p + 1)) * bn_const1["V"] / (2 * (bn_const1["B"] ** 2 + scaleregul * bn_const1["Reg.1"]))) ** (1.0 / (2 * p + 6))
             if bwcheck_bounds is not None:
                 bn0 = min(max(bn0, bw_min0), bw_max0)
                 bn1v = min(max(bn1v, bw_min1), bw_max1)
 
-        hn_const0 = _bw_v2_exact(centered[side0], y_bw[side0], radial[side0], p, vec, dn0, bn0, thr0, vce, kernel, kernel_type)
-        hn_const1 = _bw_v2_exact(centered[side1], y_bw[side1], radial[side1], p, vec, dn1, bn1v, thr1, vce, kernel, kernel_type)
+        y_hn_v, n_cov_hn_v = adjusted_y(p, dn0, dn1)
+        y_hn_b, n_cov_hn_b = adjusted_y(p + 1, bn0, bn1v)
+        y_hn_t, _ = adjusted_y(p + 2, thr0, thr1)
+        scale_hn_v0, scale_hn_v1 = bw_scales(p, dn0, dn1, n_cov_hn_v)
+        scale_hn_b0, scale_hn_b1 = bw_scales(p + 1, bn0, bn1v, n_cov_hn_b)
+        hn_const0 = _bw_v2_exact(
+            centered[side0],
+            y_bw[side0],
+            radial[side0],
+            p,
+            vec,
+            dn0,
+            bn0,
+            thr0,
+            vce,
+            kernel,
+            kernel_type,
+            cluster=cluster[side0] if cluster is not None else None,
+            y_var=y_hn_v[side0],
+            y_bias=y_hn_b[side0],
+            y_reg2=y_hn_t[side0],
+            scale_var=scale_hn_v0,
+            scale_bias=scale_hn_b0,
+        )
+        hn_const1 = _bw_v2_exact(
+            centered[side1],
+            y_bw[side1],
+            radial[side1],
+            p,
+            vec,
+            dn1,
+            bn1v,
+            thr1,
+            vce,
+            kernel,
+            kernel_type,
+            cluster=cluster[side1] if cluster is not None else None,
+            y_var=y_hn_v[side1],
+            y_bias=y_hn_b[side1],
+            y_reg2=y_hn_t[side1],
+            scale_var=scale_hn_v1,
+            scale_bias=scale_hn_b1,
+        )
 
         if base_select in {"mserd", "imserd"}:
             denom = deriv_denom * (
@@ -727,6 +900,7 @@ def rdbw2d(
                 row[5] *= factor1
 
     bws = pd.DataFrame(rows, columns=["b1", "b2", "h01", "h02", "h11", "h12", "N.Co", "N.Tr"])
+    cov_rank = rank_tracker.summary()
     out = RD2DResult(
         bws=bws,
         mseconsts=mseconsts,
@@ -750,6 +924,15 @@ def rdbw2d(
             "fuzzy": fuzzy is not None,
             "cluster": cluster,
             "clustered": cluster is not None,
+            "covs.eff": covs_eff is not None,
+            "N.covs.eff": len(cov_names),
+            "N.covs.used": cov_rank.used,
+            "covs.dropped": cov_rank.dropped,
+            "covs.redundant": cov_rank.redundant,
+            "covs.rank.deficient": cov_rank.rank_deficient,
+            "covs.drop": covs_drop,
+            "covs.tol": covs_tol,
+            "fitmethod": fitmethod,
             "vce": vce,
             "masspoints": masspoints,
             "scaleregul": scaleregul,
@@ -769,6 +952,80 @@ def _location_weights(centered: np.ndarray, h: np.ndarray, kernel: str, kernel_t
     return w / max(float(h[0] * h[1]), np.finfo(float).eps)
 
 
+def _variance_scale(vce: str, e_n: int, k_df: int, cluster_values, clustered: bool) -> float:
+    scale = 1.0
+    if e_n <= k_df:
+        return scale
+    if vce == "hc1":
+        scale *= e_n / (e_n - k_df)
+    if clustered and cluster_values is not None:
+        groups = pd.unique(np.asarray(cluster_values))
+        g = len(groups)
+        if g > 1:
+            scale *= ((e_n - 1.0) / (e_n - k_df)) * (g / (g - 1.0))
+    return float(scale)
+
+
+def _local_projection_components(
+    design: np.ndarray,
+    weights: np.ndarray,
+    outcomes: np.ndarray,
+    covs: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    keep = weights > 0
+    if not np.any(keep):
+        p = covs.shape[1]
+        return np.zeros((p, p)), np.zeros((p, outcomes.shape[1]))
+    X = design[keep, :]
+    w = weights[keep]
+    Y = outcomes[keep, :]
+    Z = covs[keep, :]
+    inv_g = np.linalg.pinv(X.T @ (w[:, None] * X), rcond=1e-12)
+    u_y = X.T @ (w[:, None] * Y)
+    u_z = X.T @ (w[:, None] * Z)
+    zwz = Z.T @ (w[:, None] * Z) - u_z.T @ inv_g @ u_z
+    zwy = Z.T @ (w[:, None] * Y) - u_z.T @ inv_g @ u_y
+    return zwz, zwy
+
+
+def _location_covariate_gamma(
+    centered: np.ndarray,
+    d: np.ndarray,
+    outcomes: np.ndarray,
+    covs_eff: np.ndarray | None,
+    h0: np.ndarray,
+    h1: np.ndarray,
+    p: int,
+    kernel: str,
+    kernel_type: str,
+    cov_names: list[str],
+    tracker: CovariateRankTracker | None,
+    covs_drop: bool,
+    covs_tol: float,
+) -> tuple[np.ndarray | None, int]:
+    if covs_eff is None or covs_eff.shape[1] == 0:
+        return None, 0
+    design = basis_2d(centered, p)
+    w0 = np.where(~d, _location_weights(centered, h0, kernel, kernel_type), 0.0)
+    w1 = np.where(d, _location_weights(centered, h1, kernel, kernel_type), 0.0)
+    zwz0, zwy0 = _local_projection_components(design, w0, outcomes, covs_eff)
+    zwz1, zwy1 = _local_projection_components(design, w1, outcomes, covs_eff)
+    return solve_covariate_gamma(
+        zwz0 + zwz1,
+        zwy0 + zwy1,
+        cov_names,
+        tracker,
+        covs_drop,
+        covs_tol,
+    )
+
+
+def _adjust_outcomes(outcomes: np.ndarray, covs_eff: np.ndarray | None, gamma: np.ndarray | None) -> np.ndarray:
+    if covs_eff is None or gamma is None:
+        return outcomes
+    return outcomes - covs_eff @ gamma
+
+
 def _fit_location_order(
     y: np.ndarray,
     x: np.ndarray,
@@ -784,7 +1041,17 @@ def _fit_location_order(
     kernel_type: str,
     vce: str,
     cluster,
+    *,
+    fitmethod: str = "joint",
+    covs_eff: np.ndarray | None = None,
+    cov_names: list[str] | None = None,
+    rank_tracker: CovariateRankTracker | None = None,
+    covs_drop: bool = True,
+    covs_tol: float = 1e-12,
 ) -> dict[str, Any]:
+    fitmethod = validate_fitmethod(fitmethod)
+    cov_names = [] if cov_names is None else cov_names
+    covariate_adjusted = covs_eff is not None and covs_eff.shape[1] > 0
     nout = outcomes.shape[1]
     neval = b.shape[0]
     mu0 = np.full((neval, nout), np.nan)
@@ -804,8 +1071,53 @@ def _fit_location_order(
         w1 = _location_weights(centered, h1[j, :], kernel, kernel_type)
         w0 = np.where(~d, w0, 0.0)
         w1 = np.where(d, w1, 0.0)
+        outcomes_fit = outcomes
+        n_cov = 0
+        if covariate_adjusted:
+            gamma, n_cov = _location_covariate_gamma(
+                centered,
+                d,
+                outcomes,
+                covs_eff,
+                h0[j, :],
+                h1[j, :],
+                p,
+                kernel,
+                kernel_type,
+                cov_names,
+                rank_tracker,
+                covs_drop,
+                covs_tol,
+            )
+            outcomes_fit = _adjust_outcomes(outcomes, covs_eff, gamma)
+
+        e0 = int(np.sum(w0 > 0))
+        e1 = int(np.sum(w1 > 0))
+        k_poly = design.shape[1]
+        clustered = cluster is not None
+        vce_local = "hc0" if (fitmethod == "joint" or covariate_adjusted) and vce == "hc1" else vce
+        scale0 = scale1 = None
+        if (fitmethod == "joint" or covariate_adjusted) and (vce == "hc1" or clustered):
+            if fitmethod == "joint":
+                active = (w0 > 0) | (w1 > 0)
+                cl_active = None if cluster is None else np.asarray(cluster)[active]
+                scale = _variance_scale(vce, e0 + e1, 2 * k_poly + n_cov, cl_active, clustered)
+                scale0 = scale1 = scale
+            else:
+                cl0 = None if cluster is None else np.asarray(cluster)[w0 > 0]
+                cl1 = None if cluster is None else np.asarray(cluster)[w1 > 0]
+                scale0 = _variance_scale(vce, e0, k_poly + n_cov, cl0, clustered)
+                scale1 = _variance_scale(vce, e1, k_poly + n_cov, cl1, clustered)
         try:
-            fit0 = local_fit_targets(design, w0, outcomes, target, vce=vce, cluster=cluster)
+            fit0 = local_fit_targets(
+                design,
+                w0,
+                outcomes_fit,
+                target,
+                vce=vce_local,
+                cluster=cluster,
+                scale_override=scale0,
+            )
             mu0[j, :] = fit0.estimate
             se0[j, :] = fit0.se
             n0[j] = fit0.n_eff
@@ -814,7 +1126,15 @@ def _fit_location_order(
         except ValueError:
             pass
         try:
-            fit1 = local_fit_targets(design, w1, outcomes, target, vce=vce, cluster=cluster)
+            fit1 = local_fit_targets(
+                design,
+                w1,
+                outcomes_fit,
+                target,
+                vce=vce_local,
+                cluster=cluster,
+                scale_override=scale1,
+            )
             mu1[j, :] = fit1.estimate
             se1[j, :] = fit1.se
             n1[j] = fit1.n_eff
@@ -929,6 +1249,10 @@ def rd2d(
     scalebiascrct: float = 1.0,
     stdvars: bool = True,
     fuzzy=None,
+    covs_eff=None,
+    covs_drop: bool = True,
+    covs_tol: float = 1e-12,
+    fitmethod: str = "joint",
 ) -> RD2DResult:
     """Location-based local polynomial boundary discontinuity estimator.
 
@@ -961,7 +1285,12 @@ def rd2d(
         when available.
     """
 
-    y, x, d, b, fuzzy, cluster = _clean_location_inputs(Y, X, assignment, b, fuzzy, cluster)
+    y, x, d, b, fuzzy, cluster, covs_eff, cov_names = _clean_location_inputs(
+        Y, X, assignment, b, fuzzy, cluster, covs_eff
+    )
+    fitmethod = validate_fitmethod(fitmethod)
+    covs_drop, covs_tol = validate_covs_rank_options(covs_drop, covs_tol)
+    rank_tracker = CovariateRankTracker(cov_names, covs_drop, covs_tol)
     p = validate_order(p, "p")
     if q is None:
         q = p + 1
@@ -1017,6 +1346,10 @@ def rd2d(
             scalebiascrct=scalebiascrct,
             stdvars=stdvars,
             fuzzy=fuzzy,
+            covs_eff=covs_eff,
+            covs_drop=covs_drop,
+            covs_tol=covs_tol,
+            fitmethod=fitmethod,
         ).bws
         h0 = bws[["h01", "h02"]].to_numpy(dtype=float)
         h1 = bws[["h11", "h12"]].to_numpy(dtype=float)
@@ -1027,8 +1360,50 @@ def rd2d(
     h0, h1 = _apply_fit_bwcheck(h0, h1, x, d, b, fit_bwcheck, kernel_type, masspoints)
 
     outcomes = y.reshape(-1, 1) if not is_fuzzy else np.column_stack([y, fuzzy])
-    fit_p = _fit_location_order(y, x, d, b, outcomes, h0, h1, p, deriv, tangvec_arr, kernel, kernel_type, vce, cluster)
-    fit_q = fit_p if q == p else _fit_location_order(y, x, d, b, outcomes, h0, h1, q, deriv, tangvec_arr, kernel, kernel_type, vce, cluster)
+    fit_p = _fit_location_order(
+        y,
+        x,
+        d,
+        b,
+        outcomes,
+        h0,
+        h1,
+        p,
+        deriv,
+        tangvec_arr,
+        kernel,
+        kernel_type,
+        vce,
+        cluster,
+        fitmethod=fitmethod,
+        covs_eff=covs_eff,
+        cov_names=cov_names,
+        rank_tracker=rank_tracker,
+        covs_drop=covs_drop,
+        covs_tol=covs_tol,
+    )
+    fit_q = fit_p if q == p else _fit_location_order(
+        y,
+        x,
+        d,
+        b,
+        outcomes,
+        h0,
+        h1,
+        q,
+        deriv,
+        tangvec_arr,
+        kernel,
+        kernel_type,
+        vce,
+        cluster,
+        fitmethod=fitmethod,
+        covs_eff=covs_eff,
+        cov_names=cov_names,
+        rank_tracker=rank_tracker,
+        covs_drop=covs_drop,
+        covs_tol=covs_tol,
+    )
 
     infl_tables: dict[str, np.ndarray] = {}
     if not is_fuzzy:
@@ -1133,6 +1508,7 @@ def rd2d(
         if name in params_cov_set and infl is not None
     }
 
+    cov_rank = rank_tracker.summary()
     out = RD2DResult(
         **result_tables,
         opt={
@@ -1158,6 +1534,15 @@ def rd2d(
             "masspoints": masspoints,
             "cluster": cluster,
             "clustered": cluster is not None,
+            "covs.eff": covs_eff is not None,
+            "N.covs.eff": len(cov_names),
+            "N.covs.used": cov_rank.used,
+            "covs.dropped": cov_rank.dropped,
+            "covs.redundant": cov_rank.redundant,
+            "covs.rank.deficient": cov_rank.rank_deficient,
+            "covs.drop": covs_drop,
+            "covs.tol": covs_tol,
+            "fitmethod": fitmethod,
             "scaleregul": scaleregul,
             "scalebiascrct": scalebiascrct,
             "stdvars": stdvars,

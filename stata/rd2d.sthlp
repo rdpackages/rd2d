@@ -1,5 +1,5 @@
 {smcl}
-{* *!version 0.2.0  2026-05-23}{...}
+{* *!version 1.0.0  2026-05-26}{...}
 {viewerjumpto "Syntax" "rd2d##syntax"}{...}
 {viewerjumpto "Description" "rd2d##description"}{...}
 {viewerjumpto "Options" "rd2d##options"}{...}
@@ -26,6 +26,8 @@
 {cmd:kernel(}{it:kernel}{cmd:)}
 {cmd:kerneltype(}{it:type}{cmd:)}
 {cmd:vce(}{it:vcetype}{cmd:)}
+{cmd:fitmethod(}{it:method}{cmd:)}
+{cmd:covseff(}{it:varlist}{cmd:)}
 {cmd:cluster(}{it:clustvar}{cmd:)}
 {cmd:level(}{it:#}{cmd:)}
 {cmd:side(}{it:side}{cmd:)}
@@ -85,6 +87,10 @@
 {p 8 12}{cmd:hc3}: heteroskedasticity-robust plug-in residual variance estimator with HC3 leverage adjustment.{p_end}
 
 {p 4 8}{cmd:cluster(}{it:clustvar}{cmd:)} specifies a cluster ID variable. When supplied, cluster-level influence sums with degrees-of-freedom weights are used.{p_end}
+
+{p 4 8}{cmd:fitmethod()} specifies the fitting convention used for estimation, inference, and automatic bandwidth selection. The default, {cmd:fitmethod(joint)}, uses the joint treatment-interacted regression convention. {cmd:fitmethod(separate)} uses the legacy two-sample side-specific fitting convention. Point estimates are unchanged without covariates, but HC1 and clustered-robust standard errors may differ because the joint method counts degrees of freedom and clusters jointly across sides.{p_end}
+
+{p 4 8}{cmd:covseff(}{it:varlist}{cmd:)} specifies pre-intervention covariates used for efficiency adjustment. Covariates enter with common coefficients across treatment sides after residualizing on the side-specific local polynomial bases. When {cmd:h()} is omitted, the same covariate adjustment is propagated to automatic bandwidth selection.{p_end}
 
 {p 4 8}{cmd:level()} sets the confidence level. Default is {cmd:level(95)}.{p_end}
 
@@ -146,6 +152,11 @@
 {p 8 8}{cmd:. generate double yf = 3 + 2*x1 + 1.5*x2 + 1.5*takeup + rnormal()}{p_end}
 {p 8 8}{cmd:. rd2d yf x1 x2 d, b(0 0 0 1) h(.9) fuzzy(takeup)}{p_end}
 
+{p 4 8}Covariate adjustment and legacy fitting convention{p_end}
+{p 8 8}{cmd:. generate double z = x1 + x2 + rnormal()}{p_end}
+{p 8 8}{cmd:. rd2d y x1 x2 d, b(0 0 0 1) h(.9) covseff(z) fitmethod(joint)}{p_end}
+{p 8 8}{cmd:. rd2d y x1 x2 d, b(0 0 0 1) h(.9) fitmethod(separate)}{p_end}
+
 {marker stored_results}{...}
 {title:Stored results}
 
@@ -172,6 +183,9 @@
 {synopt:{cmd:e(N)}}number of observations{p_end}
 {synopt:{cmd:e(p)}}polynomial order for point estimation{p_end}
 {synopt:{cmd:e(q)}}polynomial order for bias-corrected inference{p_end}
+{p2col 5 20 24 2: Macros}{p_end}
+{synopt:{cmd:e(fitmethod)}}fitting convention{p_end}
+{synopt:{cmd:e(covseff)}}covariates used for efficiency adjustment, if supplied{p_end}
 
 {marker references}{...}
 {title:References}

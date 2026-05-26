@@ -1,4 +1,4 @@
-*!version 0.2.0  2026-05-23
+*!version 1.0.0  2026-05-26
 capture program drop rdbw2d_distance
 program define rdbw2d_distance, eclass
 	version 16.0

@@ -64,9 +64,14 @@ simulate_spp_cubic <- function(n, seed) {
     rnorm(n, sd = dgp$sigma_y_0)
   y1 <- mu_y_1 + dgp$lambda_1 * (fuzzy1 - mu_fuzzy_1) +
     rnorm(n, sd = dgp$sigma_y_1)
+  Z.1 <- 0.02 * X$x.1 - 0.015 * X$x.2 + rnorm(n, sd = 0.35)
+  Z.2 <- 0.5 * (X$x.1 > 20) + 0.01 * X$x.2 + rnorm(n, sd = 0.35)
+  y0 <- y0 + 0.25 * Z.1 - 0.15 * Z.2
+  y1 <- y1 + 0.25 * Z.1 - 0.15 * Z.2
   data.frame(x.1 = X$x.1, x.2 = X$x.2, assignment = assignment,
              fuzzy = ifelse(assignment == 1, fuzzy1, fuzzy0),
-             Y = ifelse(assignment == 1, y1, y0))
+             Y = ifelse(assignment == 1, y1, y0),
+             Z.1 = Z.1, Z.2 = Z.2)
 }
 
 # Set simulation inputs.

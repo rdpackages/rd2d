@@ -221,6 +221,7 @@ def main(show: bool = True) -> dict[str, object]:
     Y = dat["Y"]
     A = dat["assignment"]
     D = dat["fuzzy"]
+    Z = dat[["Z.1", "Z.2"]]
 
     neval = int(os.getenv("RD2D_ILLUSTRATION_NEVAL", "40"))
     repp = int(os.getenv("RD2D_ILLUSTRATION_REPP", "499"))
@@ -237,6 +238,8 @@ def main(show: bool = True) -> dict[str, object]:
         fuzzy=D,
         params_other="itt.0",
         params_cov=["main", "itt", "fs", "itt.0"],
+        covs_eff=Z,
+        fitmethod="joint",
         masspoints="off",
     )
 
@@ -245,6 +248,8 @@ def main(show: bool = True) -> dict[str, object]:
         Y,
         distance,
         b=eval_points,
+        covs_eff=Z,
+        fitmethod="joint",
         masspoints="off",
         cbands=True,
     )
@@ -255,6 +260,8 @@ def main(show: bool = True) -> dict[str, object]:
         distance,
         b=eval_points,
         fuzzy=D,
+        covs_eff=Z,
+        fitmethod="joint",
         bwparam="itt",
         params_cov=["main", "itt", "fs"],
         masspoints="off",

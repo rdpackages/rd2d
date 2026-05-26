@@ -2,7 +2,7 @@
 * RD2D STATA PACKAGE -- rdbw2d_dist
 * Authors: Matias D. Cattaneo, Rocio Titiunik, Ruiqi Rae Yu
 ********************************************************************************
-*!version 0.2.0  2026-05-23
+*!version 1.0.0  2026-05-26
 
 capture program drop rdbw2d_dist
 program define rdbw2d_dist, eclass
@@ -12,12 +12,13 @@ program define rdbw2d_dist, eclass
 		   KINKUNKnown(string) KINKPOSition(numlist) KERnel(string) ///
 		   BWSELECT(string) BWPARAM(string) VCE(string) BWCHECK(integer -1) ///
 		   MASSpoints(string) CLuster(varname numeric) SCALEREGUL(real 1) ///
-		   CQT(real .5) ]
+		   CQT(real .5) FITMethod(string) COVSEFF(varlist numeric) ]
 
 	marksample touse
 	gettoken y distvars : varlist
 	markout `touse' `y' `distvars'
 	if "`fuzzy'" != "" markout `touse' `fuzzy'
+	if "`covseff'" != "" markout `touse' `covseff'
 	if "`cluster'" != "" markout `touse' `cluster'
 
 	if "`kernel'" == "" local kernel "tri"
@@ -25,6 +26,12 @@ program define rdbw2d_dist, eclass
 	if "`bwparam'" == "" local bwparam "main"
 	if "`vce'" == "" local vce "hc1"
 	if "`masspoints'" == "" local masspoints "check"
+	if "`fitmethod'" == "" local fitmethod "joint"
+	local fitmethod = lower("`fitmethod'")
+	if !inlist("`fitmethod'", "joint", "separate") {
+		di as error "fitmethod() must be joint or separate"
+		exit 198
+	}
 	if `bwcheck' < 0 local bwcheck = 20 + `p' + 1
 
 	local kink1 = 0
@@ -59,7 +66,7 @@ program define rdbw2d_dist, eclass
 	mata: rdbw2d_distance_stata("`bw'", "`y'", "`distvars'", "`fuzzy'", ///
 		"`cluster'", "`touse'", st_local("b"), `p', "`kernel'", ///
 		"`bwselect'", "`bwparam'", "`vce'", `bwcheck', `kink1', ///
-		st_local("kinkposition"), `scaleregul', `cqt')
+		st_local("kinkposition"), `scaleregul', `cqt', "`fitmethod'", "`covseff'")
 
 	matrix colnames `bw' = b1 b2 h0 h1 N_Co N_Tr
 	ereturn clear
@@ -74,8 +81,10 @@ program define rdbw2d_dist, eclass
 	ereturn local bwselect "`bwselect'"
 	ereturn local bwparam "`bwparam'"
 	ereturn local vce "`vce'"
+	ereturn local fitmethod "`fitmethod'"
 	ereturn local masspoints "`masspoints'"
 	ereturn local fuzzy "`fuzzy'"
+	ereturn local covseff "`covseff'"
 
 	di as text _newline "Distance-based bandwidth selection"
 	matlist e(bws), names(columns) format(%10.4f)

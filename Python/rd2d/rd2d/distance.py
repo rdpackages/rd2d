@@ -15,13 +15,18 @@ from ._utils import (
     ci_columns,
     complete_cases,
     covariance_from_influence,
+    CovariateRankTracker,
     kernel_weights,
     local_fit_targets,
     p_values,
+    prepare_covs_eff,
+    solve_covariate_gamma,
     target_1d,
+    validate_covs_rank_options,
+    validate_fitmethod,
     validate_order,
 )
-from .location import _bwselect_base, _is_cer, _is_common, _se_from_influence
+from .location import _bwselect_base, _is_cer, _is_common, _se_from_influence, _variance_scale
 from .results import RD2DResult
 
 
@@ -45,10 +50,11 @@ DISTANCE_MAIN_COLUMNS = [
 ]
 
 
-def _clean_distance_inputs(y, distance, b=None, fuzzy=None, cluster=None):
+def _clean_distance_inputs(y, distance, b=None, fuzzy=None, cluster=None, covs_eff=None):
     y = as_1d(y, "Y")
     distance = as_2d(distance, "distance")
     check_lengths(y, distance)
+    covs_eff, cov_names = prepare_covs_eff(covs_eff, len(y))
     if b is None:
         b_arr = np.full((distance.shape[1], 2), np.nan)
     else:
@@ -60,6 +66,8 @@ def _clean_distance_inputs(y, distance, b=None, fuzzy=None, cluster=None):
         fuzzy = as_1d(fuzzy, "fuzzy")
         check_lengths(y, fuzzy)
         arrays.append(fuzzy)
+    if covs_eff is not None:
+        arrays.append(covs_eff)
     if cluster is not None:
         cluster = np.asarray(cluster)
         check_lengths(y, cluster)
@@ -69,9 +77,11 @@ def _clean_distance_inputs(y, distance, b=None, fuzzy=None, cluster=None):
     distance = distance[keep, :]
     if fuzzy is not None:
         fuzzy = fuzzy[keep]
+    if covs_eff is not None:
+        covs_eff = covs_eff[keep, :]
     if cluster is not None:
         cluster = np.asarray(cluster)[keep]
-    return y, distance, b_arr, fuzzy, cluster
+    return y, distance, b_arr, fuzzy, cluster, covs_eff, cov_names
 
 
 def _validate_kink_unknown(kink_unknown) -> tuple[bool, bool]:
@@ -170,6 +180,66 @@ def _vce_const_1d(w_R: np.ndarray, resd: np.ndarray, h: float) -> np.ndarray:
     return scores.T @ scores * h ** 2
 
 
+def _distance_projection_components(
+    u: np.ndarray,
+    weights: np.ndarray,
+    outcomes: np.ndarray,
+    covs: np.ndarray,
+    p: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    keep = weights > 0
+    if not np.any(keep):
+        z = covs.shape[1]
+        return np.zeros((z, z)), np.zeros((z, outcomes.shape[1]))
+    X = basis_1d(u[keep], p)
+    w = weights[keep]
+    Y = outcomes[keep, :]
+    Z = covs[keep, :]
+    inv_g = np.linalg.pinv(X.T @ (w[:, None] * X), rcond=1e-12)
+    u_y = X.T @ (w[:, None] * Y)
+    u_z = X.T @ (w[:, None] * Z)
+    zwz = Z.T @ (w[:, None] * Z) - u_z.T @ inv_g @ u_z
+    zwy = Z.T @ (w[:, None] * Y) - u_z.T @ inv_g @ u_y
+    return zwz, zwy
+
+
+def _distance_covariate_gamma(
+    signed: np.ndarray,
+    outcomes: np.ndarray,
+    covs_eff: np.ndarray | None,
+    h0: float,
+    h1: float,
+    p: int,
+    kernel: str,
+    cov_names: list[str],
+    tracker: CovariateRankTracker | None,
+    covs_drop: bool,
+    covs_tol: float,
+) -> tuple[np.ndarray | None, int]:
+    if covs_eff is None or covs_eff.shape[1] == 0:
+        return None, 0
+    side1 = signed >= 0
+    u = np.abs(signed)
+    w0 = np.where(~side1, kernel_weights(u / h0, kernel) / max(h0 ** 2, np.finfo(float).eps), 0.0)
+    w1 = np.where(side1, kernel_weights(u / h1, kernel) / max(h1 ** 2, np.finfo(float).eps), 0.0)
+    zwz0, zwy0 = _distance_projection_components(u, w0, outcomes, covs_eff, p)
+    zwz1, zwy1 = _distance_projection_components(u, w1, outcomes, covs_eff, p)
+    return solve_covariate_gamma(
+        zwz0 + zwz1,
+        zwy0 + zwy1,
+        cov_names,
+        tracker,
+        covs_drop,
+        covs_tol,
+    )
+
+
+def _adjust_outcomes(outcomes: np.ndarray, covs_eff: np.ndarray | None, gamma: np.ndarray | None) -> np.ndarray:
+    if covs_eff is None or gamma is None:
+        return outcomes
+    return outcomes - covs_eff @ gamma
+
+
 def _local_intercepts_multi(y: np.ndarray, fuzzy: np.ndarray, distance_abs: np.ndarray, h: float, p: int, kernel: str) -> tuple[float, float]:
     w = kernel_weights(distance_abs / h, kernel) / h ** 2
     keep = w > 0
@@ -193,7 +263,16 @@ def _distance_bw_constants(
     cqt: float,
     fuzzy: np.ndarray | None,
     bwparam: str,
+    *,
+    fitmethod: str = "joint",
+    covs_eff: np.ndarray | None = None,
+    cov_names: list[str] | None = None,
+    rank_tracker: CovariateRankTracker | None = None,
+    covs_drop: bool = True,
+    covs_tol: float = 1e-12,
 ) -> pd.DataFrame:
+    fitmethod = validate_fitmethod(fitmethod)
+    cov_names = [] if cov_names is None else cov_names
     rows = []
     for j in range(dist.shape[1]):
         signed = dist[:, j]
@@ -201,8 +280,8 @@ def _distance_bw_constants(
         u = np.abs(signed)
         u0 = u[~side1]
         u1 = u[side1]
-        y0 = y[~side1].copy()
-        y1 = y[side1].copy()
+        y_base = y.copy()
+        fuzzy_base = fuzzy
         dn = _distance_rot(u, kernel)
         dn0 = dn1 = dn
         bw_min0 = bw_min1 = 0.0
@@ -218,6 +297,29 @@ def _distance_bw_constants(
             dn0 = min(max(dn, bw_min0), bw_max0)
             dn1 = min(max(dn, bw_min1), bw_max1)
 
+        n_cov_i = 0
+        if covs_eff is not None:
+            outcomes_gamma = np.column_stack([y, fuzzy]) if fuzzy is not None and bwparam == "main" else y.reshape(-1, 1)
+            gamma, n_cov_i = _distance_covariate_gamma(
+                signed,
+                outcomes_gamma,
+                covs_eff,
+                dn0,
+                dn1,
+                p,
+                kernel,
+                cov_names,
+                rank_tracker,
+                covs_drop,
+                covs_tol,
+            )
+            adjusted = _adjust_outcomes(outcomes_gamma, covs_eff, gamma)
+            y_base = adjusted[:, 0]
+            if fuzzy is not None and bwparam == "main":
+                fuzzy_base = adjusted[:, 1]
+
+        y0 = y_base[~side1].copy()
+        y1 = y_base[side1].copy()
         degree = p + 1
         thr0 = float(np.quantile(u0, cqt))
         thr1 = float(np.quantile(u1, cqt))
@@ -225,8 +327,8 @@ def _distance_bw_constants(
         fit1 = _poly_lm(y1[u1 <= thr1], u1[u1 <= thr1], degree)
 
         if fuzzy is not None and bwparam == "main":
-            f0 = fuzzy[~side1]
-            f1 = fuzzy[side1]
+            f0 = fuzzy_base[~side1]
+            f1 = fuzzy_base[side1]
             mu_y0, mu_f0 = _local_intercepts_multi(y0, f0, u0, dn0, p, kernel)
             mu_y1, mu_f1 = _local_intercepts_multi(y1, f1, u1, dn1, p, kernel)
             tau_itt = mu_y1 - mu_y0
@@ -242,7 +344,7 @@ def _distance_bw_constants(
         vec = np.zeros(p + 1)
         vec[0] = 1.0
 
-        def side_constants(us: np.ndarray, ys: np.ndarray, h: float, model: dict[str, Any]):
+        def side_constants(us: np.ndarray, ys: np.ndarray, h: float, model: dict[str, Any], scale_override: float | None = None):
             w = kernel_weights(us / h, kernel) / h ** 2
             keep = w > 0
             eX = us[keep]
@@ -255,7 +357,7 @@ def _distance_bw_constants(
             resd = eY - model["predict"](eX)
             eN = int(np.sum(keep))
             k = p + 1
-            if vce == "hc1" and eN > k:
+            if scale_override is None and vce == "hc1" and eN > k:
                 resd = resd * np.sqrt(eN / (eN - k))
             elif vce in {"hc2", "hc3"}:
                 hii = np.sum((sqrtw_R @ invG) * sqrtw_R, axis=1)
@@ -264,6 +366,8 @@ def _distance_bw_constants(
                 else:
                     resd = resd * (1.0 / np.maximum(1.0 - hii, 1e-12))
             sigma = _vce_const_1d(sigma_half, resd, h)
+            if scale_override is not None:
+                sigma = sigma * scale_override
             pmatrix = R.T @ (((eX / h) ** (p + 1) * ew).reshape(-1, 1))
             coeff = np.zeros(p + 2)
             coeff[-1] = float(np.asarray(vec.reshape(1, -1) @ invG @ pmatrix).item())
@@ -272,8 +376,19 @@ def _distance_bw_constants(
             V = float(np.asarray(vec.reshape(1, -1) @ invG @ sigma @ invG @ vec.reshape(-1, 1)).item())
             return B, V, Reg, eN
 
-        B0, V0, R0, eN0 = side_constants(u0, y0, dn0, fit0)
-        B1, V1, R1, eN1 = side_constants(u1, y1, dn1, fit1)
+        eN0_pre = int(np.sum(kernel_weights(u0 / dn0, kernel) > 0))
+        eN1_pre = int(np.sum(kernel_weights(u1 / dn1, kernel) > 0))
+        k_df = p + 1
+        scale0 = scale1 = None
+        if (fitmethod == "joint" or covs_eff is not None) and vce == "hc1":
+            if fitmethod == "joint":
+                scale0 = scale1 = _variance_scale(vce, eN0_pre + eN1_pre, 2 * k_df + n_cov_i, None, False)
+            else:
+                scale0 = _variance_scale(vce, eN0_pre, k_df + n_cov_i, None, False)
+                scale1 = _variance_scale(vce, eN1_pre, k_df + n_cov_i, None, False)
+
+        B0, V0, R0, eN0 = side_constants(u0, y0, dn0, fit0, scale0)
+        B1, V1, R1, eN1 = side_constants(u1, y1, dn1, fit1, scale1)
         hn = (2 * (V0 + V1) / ((2 * p + 2) * ((B0 - B1) ** 2 + scaleregul * R0 + scaleregul * R1))) ** (1.0 / (2 * p + 4))
         rows.append([hn, hn, B0, B1, V0, V1, R0, R1, eN0, eN1, bw_min0, bw_min1, bw_max0, bw_max1])
     return pd.DataFrame(rows, columns=["h.0", "h.1", "b.0", "b.1", "v.0", "v.1", "r.0", "r.1", "N.Co", "N.Tr", "bw.min.0", "bw.min.1", "bw.max.0", "bw.max.1"])
@@ -313,6 +428,10 @@ def rdbw2d_distance(
     scaleregul: float = 1.0,
     cqt: float = 0.5,
     fuzzy=None,
+    covs_eff=None,
+    covs_drop: bool = True,
+    covs_tol: float = 1e-12,
+    fitmethod: str = "joint",
 ) -> RD2DResult:
     """Bandwidth selection for distance-based boundary discontinuity designs.
 
@@ -344,7 +463,12 @@ def rdbw2d_distance(
         ``h1``, ``N.Co``, and ``N.Tr``.
     """
 
-    y, dist, b_arr, fuzzy, cluster = _clean_distance_inputs(Y, distance, b, fuzzy, cluster)
+    y, dist, b_arr, fuzzy, cluster, covs_eff, cov_names = _clean_distance_inputs(
+        Y, distance, b, fuzzy, cluster, covs_eff
+    )
+    fitmethod = validate_fitmethod(fitmethod)
+    covs_drop, covs_tol = validate_covs_rank_options(covs_drop, covs_tol)
+    rank_tracker = CovariateRankTracker(cov_names, covs_drop, covs_tol)
     p = validate_order(p, "p")
     kink_unknown = _validate_kink_unknown(kink_unknown)
     kink_position_arr = _validate_kink_position(kink_position, dist.shape[1], b)
@@ -353,7 +477,24 @@ def rdbw2d_distance(
     base_select = _bwselect_base(bwselect)
     if base_select not in {"mserd", "msetwo", "imserd", "imsetwo"}:
         raise ValueError("unsupported bwselect.")
-    mseconsts = _distance_bw_constants(y, dist, p, kernel, vce, bwcheck, scaleregul, cqt, fuzzy, bwparam if fuzzy is not None else "main")
+    mseconsts = _distance_bw_constants(
+        y,
+        dist,
+        p,
+        kernel,
+        vce,
+        bwcheck,
+        scaleregul,
+        cqt,
+        fuzzy,
+        bwparam if fuzzy is not None else "main",
+        fitmethod=fitmethod,
+        covs_eff=covs_eff,
+        cov_names=cov_names,
+        rank_tracker=rank_tracker,
+        covs_drop=covs_drop,
+        covs_tol=covs_tol,
+    )
     if base_select == "mserd":
         hn = (2 * (mseconsts["v.0"] + mseconsts["v.1"]) / ((2 * p + 2) * ((mseconsts["b.0"] - mseconsts["b.1"]) ** 2 + scaleregul * mseconsts["r.0"] + scaleregul * mseconsts["r.1"]))) ** (1.0 / (2 * p + 4))
         if bwcheck is not None:
@@ -444,6 +585,7 @@ def rdbw2d_distance(
             h_rate1 = bws.loc[finite, "h1"].to_numpy(dtype=float) * M1[finite].astype(float) ** (smooth_exp - 1.0 / 4.0)
             bws.loc[finite, "h0"] = np.minimum(bws.loc[finite, "h0"], np.maximum(h_rate0, known_dist[finite]))
             bws.loc[finite, "h1"] = np.minimum(bws.loc[finite, "h1"], np.maximum(h_rate1, known_dist[finite]))
+    cov_rank = rank_tracker.summary()
     return RD2DResult(
         bws=bws,
         mseconsts=mseconsts.copy(),
@@ -461,6 +603,15 @@ def rdbw2d_distance(
             "masspoints": masspoints,
             "cluster": cluster,
             "clustered": cluster is not None,
+            "covs.eff": covs_eff is not None,
+            "N.covs.eff": len(cov_names),
+            "N.covs.used": cov_rank.used,
+            "covs.dropped": cov_rank.dropped,
+            "covs.redundant": cov_rank.redundant,
+            "covs.rank.deficient": cov_rank.rank_deficient,
+            "covs.drop": covs_drop,
+            "covs.tol": covs_tol,
+            "fitmethod": fitmethod,
             "scaleregul": scaleregul,
             "cqt": cqt,
             "fuzzy": fuzzy is not None,
@@ -498,7 +649,17 @@ def _fit_distance_order(
     kernel: str,
     vce: str,
     cluster,
+    *,
+    fitmethod: str = "joint",
+    covs_eff: np.ndarray | None = None,
+    cov_names: list[str] | None = None,
+    rank_tracker: CovariateRankTracker | None = None,
+    covs_drop: bool = True,
+    covs_tol: float = 1e-12,
 ) -> dict[str, Any]:
+    fitmethod = validate_fitmethod(fitmethod)
+    cov_names = [] if cov_names is None else cov_names
+    covariate_adjusted = covs_eff is not None and covs_eff.shape[1] > 0
     nout = outcomes.shape[1]
     neval = dist.shape[1]
     mu0 = np.full((neval, nout), np.nan)
@@ -519,8 +680,51 @@ def _fit_distance_order(
         w1 = kernel_weights(u / h1[j], kernel) / max(h1[j] ** 2, np.finfo(float).eps)
         w0 = np.where(~side1, w0, 0.0)
         w1 = np.where(side1, w1, 0.0)
+        outcomes_fit = outcomes
+        n_cov = 0
+        if covariate_adjusted:
+            gamma, n_cov = _distance_covariate_gamma(
+                signed,
+                outcomes,
+                covs_eff,
+                h0[j],
+                h1[j],
+                p,
+                kernel,
+                cov_names,
+                rank_tracker,
+                covs_drop,
+                covs_tol,
+            )
+            outcomes_fit = _adjust_outcomes(outcomes, covs_eff, gamma)
+
+        e0 = int(np.sum(w0 > 0))
+        e1 = int(np.sum(w1 > 0))
+        k_poly = design.shape[1]
+        clustered = cluster is not None
+        vce_local = "hc0" if (fitmethod == "joint" or covariate_adjusted) and vce == "hc1" else vce
+        scale0 = scale1 = None
+        if (fitmethod == "joint" or covariate_adjusted) and (vce == "hc1" or clustered):
+            if fitmethod == "joint":
+                active = (w0 > 0) | (w1 > 0)
+                cl_active = None if cluster is None else np.asarray(cluster)[active]
+                scale = _variance_scale(vce, e0 + e1, 2 * k_poly + n_cov, cl_active, clustered)
+                scale0 = scale1 = scale
+            else:
+                cl0 = None if cluster is None else np.asarray(cluster)[w0 > 0]
+                cl1 = None if cluster is None else np.asarray(cluster)[w1 > 0]
+                scale0 = _variance_scale(vce, e0, k_poly + n_cov, cl0, clustered)
+                scale1 = _variance_scale(vce, e1, k_poly + n_cov, cl1, clustered)
         try:
-            fit0 = local_fit_targets(design, w0, outcomes, target, vce=vce, cluster=cluster)
+            fit0 = local_fit_targets(
+                design,
+                w0,
+                outcomes_fit,
+                target,
+                vce=vce_local,
+                cluster=cluster,
+                scale_override=scale0,
+            )
             mu0[j, :] = fit0.estimate
             se0[j, :] = fit0.se
             n0[j] = fit0.n_eff
@@ -529,7 +733,15 @@ def _fit_distance_order(
         except ValueError:
             pass
         try:
-            fit1 = local_fit_targets(design, w1, outcomes, target, vce=vce, cluster=cluster)
+            fit1 = local_fit_targets(
+                design,
+                w1,
+                outcomes_fit,
+                target,
+                vce=vce_local,
+                cluster=cluster,
+                scale_override=scale1,
+            )
             mu1[j, :] = fit1.estimate
             se1[j, :] = fit1.se
             n1[j] = fit1.n_eff
@@ -627,6 +839,10 @@ def rd2d_distance(
     scaleregul: float = 1.0,
     cqt: float = 0.5,
     fuzzy=None,
+    covs_eff=None,
+    covs_drop: bool = True,
+    covs_tol: float = 1e-12,
+    fitmethod: str = "joint",
 ) -> RD2DResult:
     """Distance-based local polynomial boundary discontinuity estimator.
 
@@ -660,7 +876,12 @@ def rd2d_distance(
         ``itt`` and ``fs`` tables.
     """
 
-    y, dist, b_arr, fuzzy, cluster = _clean_distance_inputs(Y, distance, b, fuzzy, cluster)
+    y, dist, b_arr, fuzzy, cluster, covs_eff, cov_names = _clean_distance_inputs(
+        Y, distance, b, fuzzy, cluster, covs_eff
+    )
+    fitmethod = validate_fitmethod(fitmethod)
+    covs_drop, covs_tol = validate_covs_rank_options(covs_drop, covs_tol)
+    rank_tracker = CovariateRankTracker(cov_names, covs_drop, covs_tol)
     p = validate_order(p, "p")
     kink_unknown = _validate_kink_unknown(kink_unknown)
     if q is None:
@@ -707,6 +928,10 @@ def rd2d_distance(
             scaleregul=scaleregul,
             cqt=cqt,
             fuzzy=fuzzy,
+            covs_eff=covs_eff,
+            covs_drop=covs_drop,
+            covs_tol=covs_tol,
+            fitmethod=fitmethod,
         ).bws
         h0 = bws["h0"].to_numpy(dtype=float)
         h1 = bws["h1"].to_numpy(dtype=float)
@@ -733,8 +958,38 @@ def rd2d_distance(
         h0_rbc, h1_rbc = _distance_final_bwcheck(h0_rbc, h1_rbc, dist, fit_bwcheck)
 
     outcomes = y.reshape(-1, 1) if fuzzy is None else np.column_stack([y, fuzzy])
-    fit_p = _fit_distance_order(outcomes, dist, h0, h1, p, kernel, vce, cluster)
-    fit_q = fit_p if q == p and np.array_equal(h0, h0_rbc) and np.array_equal(h1, h1_rbc) else _fit_distance_order(outcomes, dist, h0_rbc, h1_rbc, q, kernel, vce, cluster)
+    fit_p = _fit_distance_order(
+        outcomes,
+        dist,
+        h0,
+        h1,
+        p,
+        kernel,
+        vce,
+        cluster,
+        fitmethod=fitmethod,
+        covs_eff=covs_eff,
+        cov_names=cov_names,
+        rank_tracker=rank_tracker,
+        covs_drop=covs_drop,
+        covs_tol=covs_tol,
+    )
+    fit_q = fit_p if q == p and np.array_equal(h0, h0_rbc) and np.array_equal(h1, h1_rbc) else _fit_distance_order(
+        outcomes,
+        dist,
+        h0_rbc,
+        h1_rbc,
+        q,
+        kernel,
+        vce,
+        cluster,
+        fitmethod=fitmethod,
+        covs_eff=covs_eff,
+        cov_names=cov_names,
+        rank_tracker=rank_tracker,
+        covs_drop=covs_drop,
+        covs_tol=covs_tol,
+    )
 
     infl_tables: dict[str, np.ndarray] = {}
     is_fuzzy = fuzzy is not None
@@ -834,6 +1089,7 @@ def rd2d_distance(
         if name in params_cov_set and infl is not None
     }
 
+    cov_rank = rank_tracker.summary()
     return RD2DResult(
         **result_tables,
         opt={
@@ -857,6 +1113,15 @@ def rd2d_distance(
             "masspoints": masspoints,
             "cluster": cluster,
             "clustered": cluster is not None,
+            "covs.eff": covs_eff is not None,
+            "N.covs.eff": len(cov_names),
+            "N.covs.used": cov_rank.used,
+            "covs.dropped": cov_rank.dropped,
+            "covs.redundant": cov_rank.redundant,
+            "covs.rank.deficient": cov_rank.rank_deficient,
+            "covs.drop": covs_drop,
+            "covs.tol": covs_tol,
+            "fitmethod": fitmethod,
             "scaleregul": scaleregul,
             "cqt": cqt,
             "level": level,

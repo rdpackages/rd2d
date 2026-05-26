@@ -2,7 +2,7 @@
 * RD2D STATA PACKAGE -- Mata functions
 * Authors: Matias D. Cattaneo, Rocio Titiunik, Ruiqi Rae Yu
 ********************************************************************************
-*!version 0.2.0  2026-05-23
+*!version 1.0.0  2026-05-26
 
 version 16.0
 
@@ -44,6 +44,11 @@ struct rd2d_bwconst {
 struct rd2d_polyfit {
 	real colvector coef
 	real colvector se
+}
+
+struct rd2d_covcomp {
+	real matrix zwz
+	real matrix zwy
 }
 
 real scalar rd2d_mlib_loaded()
@@ -284,6 +289,13 @@ real colvector rd2d_distance_weights(real colvector sdist, real scalar h, real s
 struct rd2d_lfit scalar rd2d_local_fit(real matrix design, real colvector weights,
 	real matrix outcomes, real rowvector target, string scalar vce, real colvector cluster)
 {
+	return(rd2d_local_fit_scaled(design, weights, outcomes, target, vce, cluster, .))
+}
+
+struct rd2d_lfit scalar rd2d_local_fit_scaled(real matrix design, real colvector weights,
+	real matrix outcomes, real rowvector target, string scalar vce, real colvector cluster,
+	real scalar scale_override)
+{
 	struct rd2d_lfit scalar out
 	real colvector idx, w, leverage, adj, score, sqrtadj, ckeep, groups
 	real matrix X, Y, gram, invG, beta, fitted, resid, Xw, infl_kept, infl_full, cov, part
@@ -327,6 +339,7 @@ struct rd2d_lfit scalar rd2d_local_fit(real matrix design, real colvector weight
 	infl_kept = (score * J(1,m,1)) :* resid :* (sqrtadj * J(1,m,1))
 
 	scale = 1
+	if (scale_override < .) scale = scale_override
 	if (has_cluster) {
 		groups = uniqrows(sort(cluster,1))
 		ckeep = cluster[idx]
@@ -335,14 +348,14 @@ struct rd2d_lfit scalar rd2d_local_fit(real matrix design, real colvector weight
 			part = select(infl_kept, ckeep :== groups[g])
 			if (rows(part) > 0) infl_full[g,.] = colsum(part)
 		}
-		if (vce == "hc1" & rows(groups) > 1 & n > k) {
+		if (scale_override >= . & vce == "hc1" & rows(groups) > 1 & n > k) {
 			scale = (rows(groups)/(rows(groups)-1)) * ((n-1)/(n-k))
 		}
 		cov = scale * infl_full' * infl_full
 		out.influence = sqrt(scale) * infl_full
 	}
 	else {
-		if (vce == "hc1" & n > k) scale = n/(n-k)
+		if (scale_override >= . & vce == "hc1" & n > k) scale = n/(n-k)
 		cov = scale * infl_kept' * infl_kept
 		infl_full = J(rows(design), m, 0)
 		infl_full[idx,.] = sqrt(scale) * infl_kept
@@ -351,6 +364,92 @@ struct rd2d_lfit scalar rd2d_local_fit(real matrix design, real colvector weight
 	out.estimate = target * beta
 	out.se = sqrt(diagonal(cov))'
 	return(out)
+}
+
+real scalar rd2d_joint_vce_scale(string scalar vce, real scalar eN,
+	real scalar kdf, real colvector cluster, real scalar clustered)
+{
+	real scalar scale, g
+	scale = 1
+	vce = strlower(strtrim(vce))
+	if (eN <= kdf) return(scale)
+	if (vce == "hc1") scale = scale * eN / (eN - kdf)
+	if (clustered & rows(cluster) > 0) {
+		g = rows(uniqrows(sort(cluster,1)))
+		if (g > 1) scale = scale * ((eN - 1)/(eN - kdf)) * (g/(g - 1))
+	}
+	return(scale)
+}
+
+struct rd2d_covcomp scalar rd2d_projection_components(real matrix design,
+	real colvector weights, real matrix outcomes, real matrix covs)
+{
+	struct rd2d_covcomp scalar out
+	real colvector idx, w
+	real matrix X, Y, Z, invG, Uy, Uz
+	real scalar zcols
+
+	zcols = cols(covs)
+	out.zwz = J(zcols, zcols, 0)
+	out.zwy = J(zcols, cols(outcomes), 0)
+	idx = selectindex(weights :> 0)
+	if (rows(idx) == 0 | zcols == 0) return(out)
+	X = design[idx,.]
+	Y = outcomes[idx,.]
+	Z = covs[idx,.]
+	w = weights[idx]
+	invG = pinv(X' * (X :* (w * J(1, cols(X), 1))))
+	Uy = X' * (Y :* (w * J(1, cols(Y), 1)))
+	Uz = X' * (Z :* (w * J(1, cols(Z), 1)))
+	out.zwz = Z' * (Z :* (w * J(1, cols(Z), 1))) - Uz' * invG * Uz
+	out.zwy = Z' * (Y :* (w * J(1, cols(Y), 1))) - Uz' * invG * Uy
+	return(out)
+}
+
+real matrix rd2d_covariate_gamma(real matrix design, real colvector w0,
+	real colvector w1, real matrix outcomes, real matrix covs)
+{
+	struct rd2d_covcomp scalar c0, c1
+	if (cols(covs) == 0) return(J(0, cols(outcomes), .))
+	c0 = rd2d_projection_components(design, w0, outcomes, covs)
+	c1 = rd2d_projection_components(design, w1, outcomes, covs)
+	return(pinv(c0.zwz + c1.zwz) * (c0.zwy + c1.zwy))
+}
+
+real scalar rd2d_covariate_rank(real matrix design, real colvector w0,
+	real colvector w1, real matrix covs)
+{
+	struct rd2d_covcomp scalar c0, c1
+	if (cols(covs) == 0) return(0)
+	c0 = rd2d_projection_components(design, w0, J(rows(design),1,0), covs)
+	c1 = rd2d_projection_components(design, w1, J(rows(design),1,0), covs)
+	return(rank(c0.zwz + c1.zwz))
+}
+
+real matrix rd2d_apply_covariates(real matrix outcomes, real matrix covs,
+	real matrix gamma)
+{
+	if (cols(covs) == 0 | rows(gamma) == 0) return(outcomes)
+	return(outcomes - covs * gamma)
+}
+
+real rowvector rd2d_bw_vce_scales(string scalar fitmethod, string scalar vce,
+	real scalar covadj, real scalar e0, real scalar e1, real scalar kdf,
+	real scalar n_cov)
+{
+	real rowvector out
+	real scalar scale
+
+	out = (., .)
+	fitmethod = strlower(strtrim(fitmethod))
+	vce = strlower(strtrim(vce))
+	if (vce != "hc1" | (fitmethod != "joint" & !covadj)) return(out)
+	if (fitmethod == "joint") {
+		scale = rd2d_joint_vce_scale(vce, e0 + e1, 2*kdf + n_cov, J(0,1,.), 0)
+		return((scale, scale))
+	}
+	return((rd2d_joint_vce_scale(vce, e0, kdf + n_cov, J(0,1,.), 0),
+		rd2d_joint_vce_scale(vce, e1, kdf + n_cov, J(0,1,.), 0)))
 }
 
 real scalar rd2d_basis_count2(real scalar p)
@@ -503,10 +602,12 @@ real rowvector rd2d_get_coeff_exact2(real matrix x, real colvector distance,
 	return(J(1, pcount, 0), tail)
 }
 
-struct rd2d_bwconst scalar rd2d_bw_v2_exact2(real matrix x, real colvector y,
+struct rd2d_bwconst scalar rd2d_bw_v2_exact2_adj(real matrix x, real colvector y,
 	real colvector distance, real scalar p, real rowvector vec, real scalar dn,
 	real scalar bn1, real scalar bn2, string scalar vce, string scalar kernel,
-	string scalar kerneltype, real colvector cluster)
+	string scalar kerneltype, real colvector cluster, real colvector yvar,
+	real colvector ybias, real colvector yreg2, real scalar scale_var,
+	real scalar scale_bias)
 {
 	struct rd2d_bwconst scalar out
 	struct rd2d_bwfit scalar fitp1, fitp2
@@ -515,16 +616,20 @@ struct rd2d_bwconst scalar rd2d_bw_v2_exact2(real matrix x, real colvector y,
 	real matrix H, invH, beta, sigma
 	real rowvector vecq, vect
 	real scalar pcount, p1count, p2count, n, k
+	string scalar vce_bias
 
 	out.B = .
 	out.V = .
 	out.Reg1 = .
 	out.Reg2 = .
+	if (rows(yvar) != rows(y)) yvar = y
+	if (rows(ybias) != rows(y)) ybias = y
+	if (rows(yreg2) != rows(y)) yreg2 = y
 	w = rd2d_location_weights(x, (dn, dn), kernel, kerneltype)
 	idx = selectindex(w :> 0)
 	if (rows(idx) == 0) return(out)
 	ew = w[idx]
-	eY = y[idx]
+	eY = yvar[idx]
 	eu = x[idx,.] :/ dn
 	pcount = rd2d_basis_count2(p)
 	p1count = rd2d_basis_count2(p + 1)
@@ -562,7 +667,7 @@ struct rd2d_bwconst scalar rd2d_bw_v2_exact2(real matrix x, real colvector y,
 	n = rows(eR)
 	k = cols(eR)
 	vce = strlower(strtrim(vce))
-	if (vce == "hc1" & n > k) {
+	if (scale_var >= . & vce == "hc1" & n > k) {
 		resd = resd :* sqrt(n / (n - k))
 	}
 	else if (vce == "hc2" | vce == "hc3") {
@@ -573,15 +678,27 @@ struct rd2d_bwconst scalar rd2d_bw_v2_exact2(real matrix x, real colvector y,
 	ecluster = rows(cluster) == rows(y) ? cluster[idx] : J(0,1,.)
 	sigma = rd2d_vce_const2(eR :* (ew * J(1, cols(eR), 1)), resd, dn, ecluster)
 	out.V = (vec * invG' * sigma * invG * vec')[1,1]
+	if (scale_var < .) out.V = out.V * scale_var
 
-	fitp1 = rd2d_lm_exact2(x, y, distance, bn1, p + 1, vce, kernel, kerneltype, cluster, 1)
+	vce_bias = (scale_bias < . & vce == "hc1") ? "hc0" : vce
+	fitp1 = rd2d_lm_exact2(x, ybias, distance, bn1, p + 1, vce_bias, kernel, kerneltype, cluster, 1)
 	out.B = (vecq * fitp1.beta)[1,1]
 	out.Reg1 = (vecq * fitp1.covconst * vecq' / (bn1^(2 + 2*(p + 1))))[1,1]
+	if (scale_bias < .) out.Reg1 = out.Reg1 * scale_bias
 	if (bn2 < . & cols(vect) > 0) {
-		fitp2 = rd2d_lm_exact2(x, y, distance, bn2, p + 2, vce, kernel, kerneltype, cluster, 0)
+		fitp2 = rd2d_lm_exact2(x, yreg2, distance, bn2, p + 2, vce, kernel, kerneltype, cluster, 0)
 		out.Reg2 = ((dn * vect) * fitp2.beta)[1,1]
 	}
 	return(out)
+}
+
+struct rd2d_bwconst scalar rd2d_bw_v2_exact2(real matrix x, real colvector y,
+	real colvector distance, real scalar p, real rowvector vec, real scalar dn,
+	real scalar bn1, real scalar bn2, string scalar vce, string scalar kernel,
+	string scalar kerneltype, real colvector cluster)
+{
+	return(rd2d_bw_v2_exact2_adj(x, y, distance, p, vec, dn, bn1, bn2,
+		vce, kernel, kerneltype, cluster, y, y, y, ., .))
 }
 
 real scalar rd2d_rot_location(real matrix x, string scalar kernel, real scalar M)
@@ -773,17 +890,20 @@ real matrix rd2d_location_bw_full(real colvector y, real matrix x, real colvecto
 	string scalar kerneltype, string scalar bwselect, string scalar bwparam,
 	string scalar method, string scalar vce, real scalar bwcheck,
 	string scalar masspoints, real scalar scaleregul, real scalar scalebiascrct,
-	real scalar stdvars)
+	real scalar stdvars, string scalar fitmethod, real matrix covs)
 {
 	real matrix hraw, xw, bwork, bw, results, H, beta0, beta1, outcomes
+	real matrix design, gamma, adjusted, w0full, w1full
 	real colvector sd, centered_dist, dist0, dist1, ybw, side0, side1
+	real colvector ybase, fuzzybase, ybnv, ybnb, yhnv, yhnb, yhnt
 	real matrix centered, x0, x1
-	real rowvector target, vecq0, vecq1, b0, b1
+	real rowvector target, vecq0, vecq1, b0, b1, scales_v, scales_b
 	struct rd2d_bwconst scalar bnconst0, bnconst1, hnconst0, hnconst1
 	real scalar neval, n, j, dn, dn0, dn1, bwmin0, bwmin1, bwmax0, bwmax1
 	real scalar M, M0, M1, derivsum, derivdenom, thr0, thr1, bn0, bn1
 	real scalar hn0, hn1, hn, tauitt, taufs, graditt, gradfs, i
-	real scalar VV, BB, BB0, BB1, factor0, factor1
+	real scalar VV, BB, BB0, BB1, factor0, factor1, covadj, n_cov
+	real scalar eN0, eN1
 
 	neval = rows(b)
 	hraw = rd2d_parse_numlist(hstr, 1)
@@ -825,6 +945,8 @@ real matrix rd2d_location_bw_full(real colvector y, real matrix x, real colvecto
 	method = strlower(strtrim(method))
 	bwselect = strlower(strtrim(bwselect))
 	bwparam = strlower(strtrim(bwparam))
+	fitmethod = (strlower(strtrim(fitmethod)) == "separate" ? "separate" : "joint")
+	covadj = (cols(covs) > 0)
 
 	for (j=1; j<=neval; j++) {
 		target = rd2d_target2(p, deriv, tangvec, j)
@@ -849,9 +971,23 @@ real matrix rd2d_location_bw_full(real colvector y, real matrix x, real colvecto
 			dn1 = min((max((dn1, bwmin1)), bwmax1))
 		}
 
-		ybw = y
+		ybase = y
+		fuzzybase = fuzzy
+		if (covadj) {
+			if (rows(fuzzy) == n & bwparam == "main") outcomes = y, fuzzy
+			else outcomes = y
+			design = rd2d_basis2(centered, p)
+			w0full = rd2d_location_weights(centered, (dn0, dn0), kernel, kerneltype) :* side0
+			w1full = rd2d_location_weights(centered, (dn1, dn1), kernel, kerneltype) :* side1
+			gamma = rd2d_covariate_gamma(design, w0full, w1full, outcomes, covs)
+			adjusted = rd2d_apply_covariates(outcomes, covs, gamma)
+			ybase = adjusted[,1]
+			if (rows(fuzzy) == n & bwparam == "main") fuzzybase = adjusted[,2]
+		}
+
+		ybw = ybase
 		if (rows(fuzzy) == n & bwparam == "main") {
-			outcomes = y, fuzzy
+			outcomes = ybase, fuzzybase
 			beta0 = rd2d_lm_multi_exact2(select(centered, side0), select(outcomes, side0),
 				select(centered_dist, side0), dn0, p, kernel, kerneltype)
 			beta1 = rd2d_lm_multi_exact2(select(centered, side1), select(outcomes, side1),
@@ -861,7 +997,7 @@ real matrix rd2d_location_bw_full(real colvector y, real matrix x, real colvecto
 			if (taufs < . & abs(taufs) > sqrt(epsilon(1))) {
 				graditt = 1 / taufs
 				gradfs = -tauitt / taufs^2
-				ybw = graditt :* y + gradfs :* fuzzy
+				ybw = graditt :* ybase + gradfs :* fuzzybase
 			}
 		}
 
@@ -874,12 +1010,42 @@ real matrix rd2d_location_bw_full(real colvector y, real matrix x, real colvecto
 		bn0 = thr0
 		bn1 = thr1
 		if (method == "dpi") {
-			bnconst0 = rd2d_bw_v2_exact2(x0, select(ybw, side0), select(centered_dist, side0),
+			ybnv = ybw
+			ybnb = ybw
+			n_cov = 0
+			if (covadj) {
+				design = rd2d_basis2(centered, p + 1)
+				w0full = rd2d_location_weights(centered, (dn0, dn0), kernel, kerneltype) :* side0
+				w1full = rd2d_location_weights(centered, (dn1, dn1), kernel, kerneltype) :* side1
+				gamma = rd2d_covariate_gamma(design, w0full, w1full, ybw, covs)
+				ybnv = rd2d_apply_covariates(ybw, covs, gamma)
+				n_cov = rd2d_covariate_rank(design, w0full, w1full, covs)
+			}
+			eN0 = sum((rd2d_location_weights(centered, (dn0, dn0), kernel, kerneltype) :* side0) :> 0)
+			eN1 = sum((rd2d_location_weights(centered, (dn1, dn1), kernel, kerneltype) :* side1) :> 0)
+			scales_v = rd2d_bw_vce_scales(fitmethod, vce, covadj, eN0, eN1, rd2d_basis_count2(p + 1), n_cov)
+			n_cov = 0
+			if (covadj) {
+				design = rd2d_basis2(centered, p + 2)
+				w0full = rd2d_location_weights(centered, (thr0, thr0), kernel, kerneltype) :* side0
+				w1full = rd2d_location_weights(centered, (thr1, thr1), kernel, kerneltype) :* side1
+				gamma = rd2d_covariate_gamma(design, w0full, w1full, ybw, covs)
+				ybnb = rd2d_apply_covariates(ybw, covs, gamma)
+				n_cov = rd2d_covariate_rank(design, w0full, w1full, covs)
+			}
+			eN0 = sum((rd2d_location_weights(centered, (thr0, thr0), kernel, kerneltype) :* side0) :> 0)
+			eN1 = sum((rd2d_location_weights(centered, (thr1, thr1), kernel, kerneltype) :* side1) :> 0)
+			scales_b = rd2d_bw_vce_scales(fitmethod, vce, covadj, eN0, eN1, rd2d_basis_count2(p + 2), n_cov)
+			bnconst0 = rd2d_bw_v2_exact2_adj(x0, select(ybw, side0), select(centered_dist, side0),
 				p + 1, vecq0, dn0, thr0, ., vce, kernel, kerneltype,
-				rows(cluster)==n ? select(cluster, side0) : J(0,1,.))
-			bnconst1 = rd2d_bw_v2_exact2(x1, select(ybw, side1), select(centered_dist, side1),
+				rows(cluster)==n ? select(cluster, side0) : J(0,1,.),
+				select(ybnv, side0), select(ybnb, side0), select(ybnb, side0),
+				scales_v[1], scales_b[1])
+			bnconst1 = rd2d_bw_v2_exact2_adj(x1, select(ybw, side1), select(centered_dist, side1),
 				p + 1, vecq1, dn1, thr1, ., vce, kernel, kerneltype,
-				rows(cluster)==n ? select(cluster, side1) : J(0,1,.))
+				rows(cluster)==n ? select(cluster, side1) : J(0,1,.),
+				select(ybnv, side1), select(ybnb, side1), select(ybnb, side1),
+				scales_v[2], scales_b[2])
 			bn0 = ((2 + 2*(p+1)) * bnconst0.V / (2 * (bnconst0.B^2 + scaleregul * bnconst0.Reg1)))^(1/(2*p + 6))
 			bn1 = ((2 + 2*(p+1)) * bnconst1.V / (2 * (bnconst1.B^2 + scaleregul * bnconst1.Reg1)))^(1/(2*p + 6))
 			if (bwcheck > 0) {
@@ -888,12 +1054,50 @@ real matrix rd2d_location_bw_full(real colvector y, real matrix x, real colvecto
 			}
 		}
 
-		hnconst0 = rd2d_bw_v2_exact2(x0, select(ybw, side0), select(centered_dist, side0),
+		yhnv = ybw
+		yhnb = ybw
+		yhnt = ybw
+		n_cov = 0
+		if (covadj) {
+			design = rd2d_basis2(centered, p)
+			w0full = rd2d_location_weights(centered, (dn0, dn0), kernel, kerneltype) :* side0
+			w1full = rd2d_location_weights(centered, (dn1, dn1), kernel, kerneltype) :* side1
+			gamma = rd2d_covariate_gamma(design, w0full, w1full, ybw, covs)
+			yhnv = rd2d_apply_covariates(ybw, covs, gamma)
+			n_cov = rd2d_covariate_rank(design, w0full, w1full, covs)
+		}
+		eN0 = sum((rd2d_location_weights(centered, (dn0, dn0), kernel, kerneltype) :* side0) :> 0)
+		eN1 = sum((rd2d_location_weights(centered, (dn1, dn1), kernel, kerneltype) :* side1) :> 0)
+		scales_v = rd2d_bw_vce_scales(fitmethod, vce, covadj, eN0, eN1, rd2d_basis_count2(p), n_cov)
+		n_cov = 0
+		if (covadj) {
+			design = rd2d_basis2(centered, p + 1)
+			w0full = rd2d_location_weights(centered, (bn0, bn0), kernel, kerneltype) :* side0
+			w1full = rd2d_location_weights(centered, (bn1, bn1), kernel, kerneltype) :* side1
+			gamma = rd2d_covariate_gamma(design, w0full, w1full, ybw, covs)
+			yhnb = rd2d_apply_covariates(ybw, covs, gamma)
+			n_cov = rd2d_covariate_rank(design, w0full, w1full, covs)
+		}
+		eN0 = sum((rd2d_location_weights(centered, (bn0, bn0), kernel, kerneltype) :* side0) :> 0)
+		eN1 = sum((rd2d_location_weights(centered, (bn1, bn1), kernel, kerneltype) :* side1) :> 0)
+		scales_b = rd2d_bw_vce_scales(fitmethod, vce, covadj, eN0, eN1, rd2d_basis_count2(p + 1), n_cov)
+		if (covadj) {
+			design = rd2d_basis2(centered, p + 2)
+			w0full = rd2d_location_weights(centered, (thr0, thr0), kernel, kerneltype) :* side0
+			w1full = rd2d_location_weights(centered, (thr1, thr1), kernel, kerneltype) :* side1
+			gamma = rd2d_covariate_gamma(design, w0full, w1full, ybw, covs)
+			yhnt = rd2d_apply_covariates(ybw, covs, gamma)
+		}
+		hnconst0 = rd2d_bw_v2_exact2_adj(x0, select(ybw, side0), select(centered_dist, side0),
 			p, target, dn0, bn0, thr0, vce, kernel, kerneltype,
-			rows(cluster)==n ? select(cluster, side0) : J(0,1,.))
-		hnconst1 = rd2d_bw_v2_exact2(x1, select(ybw, side1), select(centered_dist, side1),
+			rows(cluster)==n ? select(cluster, side0) : J(0,1,.),
+			select(yhnv, side0), select(yhnb, side0), select(yhnt, side0),
+			scales_v[1], scales_b[1])
+		hnconst1 = rd2d_bw_v2_exact2_adj(x1, select(ybw, side1), select(centered_dist, side1),
 			p, target, dn1, bn1, thr1, vce, kernel, kerneltype,
-			rows(cluster)==n ? select(cluster, side1) : J(0,1,.))
+			rows(cluster)==n ? select(cluster, side1) : J(0,1,.),
+			select(yhnv, side1), select(yhnb, side1), select(yhnt, side1),
+			scales_v[2], scales_b[2])
 
 		if (rd2d_bwbase(bwselect) == "mserd" | rd2d_bwbase(bwselect) == "imserd") {
 			hn = ((2 + 2*derivsum) * (hnconst0.V + hnconst1.V) /
@@ -964,19 +1168,26 @@ real matrix rd2d_location_bw_full(real colvector y, real matrix x, real colvecto
 struct rd2d_orderfit scalar rd2d_fit_location_order(real matrix x, real colvector d,
 	real matrix b, real matrix outcomes, real matrix H, real scalar p,
 	real rowvector deriv, real matrix tangvec, string scalar kernel,
-	string scalar kerneltype, string scalar vce, real colvector cluster)
+	string scalar kerneltype, string scalar vce, real colvector cluster,
+	string scalar fitmethod, real matrix covs)
 {
 	struct rd2d_orderfit scalar out
 	struct rd2d_lfit scalar fit0, fit1
-	real matrix centered, design
-	real colvector w0, w1
+	real matrix centered, design, outcomes_fit, gamma
+	real colvector w0, w1, active, clactive, cl0, cl1
 	real rowvector target
-	real scalar j, n, neval, nout, ninf
+	real scalar j, n, neval, nout, ninf, covadj, n_cov, clustered, e0, e1, kpoly
+	real scalar scale0, scale1
+	string scalar vce_local
 
 	n = rows(x)
 	neval = rows(b)
 	nout = cols(outcomes)
 	ninf = (rows(cluster)==n ? rows(uniqrows(sort(cluster,1))) : n)
+	covadj = (cols(covs) > 0)
+	clustered = (rows(cluster) == n)
+	fitmethod = strlower(strtrim(fitmethod))
+	vce = strlower(strtrim(vce))
 	out.mu0 = J(neval, nout, .)
 	out.mu1 = J(neval, nout, .)
 	out.se0 = J(neval, nout, .)
@@ -994,8 +1205,35 @@ struct rd2d_orderfit scalar rd2d_fit_location_order(real matrix x, real colvecto
 		target = rd2d_target2(p, deriv, tangvec, j)
 		w0 = rd2d_location_weights(centered, H[j,(1,2)], kernel, kerneltype) :* (d:==0)
 		w1 = rd2d_location_weights(centered, H[j,(3,4)], kernel, kerneltype) :* (d:!=0)
-		fit0 = rd2d_local_fit(design, w0, outcomes, target, vce, cluster)
-		fit1 = rd2d_local_fit(design, w1, outcomes, target, vce, cluster)
+		outcomes_fit = outcomes
+		n_cov = 0
+		if (covadj) {
+			gamma = rd2d_covariate_gamma(design, w0, w1, outcomes, covs)
+			n_cov = rd2d_covariate_rank(design, w0, w1, covs)
+			outcomes_fit = rd2d_apply_covariates(outcomes, covs, gamma)
+		}
+		e0 = sum(w0 :> 0)
+		e1 = sum(w1 :> 0)
+		kpoly = cols(design)
+		vce_local = ((fitmethod == "joint" | covadj) & vce == "hc1") ? "hc0" : vce
+		scale0 = .
+		scale1 = .
+		if ((fitmethod == "joint" | covadj) & (vce == "hc1" | clustered)) {
+			if (fitmethod == "joint") {
+				active = (w0 :> 0) :| (w1 :> 0)
+				clactive = clustered ? select(cluster, active) : J(0,1,.)
+				scale0 = rd2d_joint_vce_scale(vce, e0 + e1, 2*kpoly + n_cov, clactive, clustered)
+				scale1 = scale0
+			}
+			else {
+				cl0 = clustered ? select(cluster, w0 :> 0) : J(0,1,.)
+				cl1 = clustered ? select(cluster, w1 :> 0) : J(0,1,.)
+				scale0 = rd2d_joint_vce_scale(vce, e0, kpoly + n_cov, cl0, clustered)
+				scale1 = rd2d_joint_vce_scale(vce, e1, kpoly + n_cov, cl1, clustered)
+			}
+		}
+		fit0 = rd2d_local_fit_scaled(design, w0, outcomes_fit, target, vce_local, cluster, scale0)
+		fit1 = rd2d_local_fit_scaled(design, w1, outcomes_fit, target, vce_local, cluster, scale1)
 		out.mu0[j,.] = fit0.estimate
 		out.mu1[j,.] = fit1.estimate
 		out.se0[j,.] = fit0.se
@@ -1055,9 +1293,10 @@ void rd2d_location_stata(string scalar main_name, string scalar bw_name,
 	string scalar kerneltype, string scalar vce, real scalar level,
 	string scalar side, string scalar bwselect, string scalar bwparam,
 	string scalar method, real scalar bwcheck, string scalar masspoints,
-	real scalar scaleregul, real scalar scalebiascrct, real scalar stdvars)
+	real scalar scaleregul, real scalar scalebiascrct, real scalar stdvars,
+	string scalar fitmethod, string scalar covsvars)
 {
-	real matrix data, x, b, bw, H, outcomes
+	real matrix data, x, b, bw, H, outcomes, covs
 	real matrix main, main0, main1, itt, fs, itt0, itt1, fs0, fs1
 	real matrix Vmain, Vitt, Vfs, Vitt0, Vitt1, Vfs0, Vfs1
 	real colvector y, d, fuzzy, cluster, estp, estq, sep, seq, taup, tauq
@@ -1065,6 +1304,7 @@ void rd2d_location_stata(string scalar main_name, string scalar bw_name,
 	real matrix inflp, inflq, infl_itt_p, infl_itt_q, infl_fs_p, infl_fs_q
 	real matrix deriv_raw
 	real rowvector deriv
+	real scalar covstart, covend
 	real matrix tangvec
 	struct rd2d_orderfit scalar fitp, fitq
 
@@ -1081,24 +1321,33 @@ void rd2d_location_stata(string scalar main_name, string scalar bw_name,
 
 	data = st_data(., yvar+" "+x1var+" "+x2var+" "+dvar+
 		(fuzzyvar=="" ? "" : " "+fuzzyvar)+
+		(covsvars=="" ? "" : " "+covsvars)+
 		(clustvar=="" ? "" : " "+clustvar), touse)
 	y = data[,1]
 	x = data[,(2,3)]
 	d = data[,4]
 	if (fuzzyvar != "") fuzzy = data[,5]
 	else fuzzy = J(0,1,.)
+	if (covsvars != "") {
+		covstart = 5 + (fuzzyvar != "")
+		covend = covstart + cols(tokens(covsvars)) - 1
+		covs = data[,covstart..covend]
+	}
+	else covs = J(rows(data), 0, .)
 	if (clustvar != "") cluster = data[,cols(data)]
 	else cluster = J(0,1,.)
 
+	fitmethod = (strlower(strtrim(fitmethod)) == "separate" ? "separate" : "joint")
 	bw = rd2d_location_bw_full(y, x, d, b, hstr, fuzzy, cluster, p,
 		deriv, tangvec, kernel, kerneltype, bwselect, bwparam, method,
-		vce, bwcheck, masspoints, scaleregul, scalebiascrct, stdvars)
+		vce, bwcheck, masspoints, scaleregul, scalebiascrct, stdvars,
+		fitmethod, covs)
 	H = bw[,(3,4,5,6)]
 	H = rd2d_apply_location_bwcheck(H, x, d, b, bwcheck, kerneltype)
 	if (fuzzyvar == "") outcomes = y
 	else outcomes = y, fuzzy
-	fitp = rd2d_fit_location_order(x, d, b, outcomes, H, p, deriv, tangvec, kernel, kerneltype, vce, cluster)
-	fitq = (q == p ? fitp : rd2d_fit_location_order(x, d, b, outcomes, H, q, deriv, tangvec, kernel, kerneltype, vce, cluster))
+	fitp = rd2d_fit_location_order(x, d, b, outcomes, H, p, deriv, tangvec, kernel, kerneltype, vce, cluster, fitmethod, covs)
+	fitq = (q == p ? fitp : rd2d_fit_location_order(x, d, b, outcomes, H, q, deriv, tangvec, kernel, kerneltype, vce, cluster, fitmethod, covs))
 
 	if (fuzzyvar == "") {
 		taup = fitp.mu1[,1] - fitp.mu0[,1]
@@ -1196,11 +1445,12 @@ void rdbw2d_location_stata(string scalar bw_name, string scalar yvar,
 	string scalar kerneltype, string scalar bwselect, string scalar bwparam,
 	string scalar method, string scalar vce, real scalar bwcheck,
 	string scalar masspoints, real scalar scaleregul, real scalar scalebiascrct,
-	real scalar stdvars)
+	real scalar stdvars, string scalar fitmethod, string scalar covsvars)
 {
-	real matrix data, x, b, bw, tangvec, deriv_raw
+	real matrix data, x, b, bw, tangvec, deriv_raw, covs
 	real colvector y, d, fuzzy, cluster
 	real rowvector deriv
+	real scalar covstart, covend
 
 	b = rd2d_parse_numlist(bstr, 2)
 	deriv_raw = rd2d_parse_numlist(derivstr, 1)
@@ -1209,17 +1459,26 @@ void rdbw2d_location_stata(string scalar bw_name, string scalar yvar,
 	tangvec = rd2d_parse_numlist(tangstr, 2)
 	data = st_data(., yvar+" "+x1var+" "+x2var+" "+dvar+
 		(fuzzyvar=="" ? "" : " "+fuzzyvar)+
+		(covsvars=="" ? "" : " "+covsvars)+
 		(clustvar=="" ? "" : " "+clustvar), touse)
 	y = data[,1]
 	x = data[,(2,3)]
 	d = data[,4]
 	if (fuzzyvar != "") fuzzy = data[,5]
 	else fuzzy = J(0,1,.)
+	if (covsvars != "") {
+		covstart = 5 + (fuzzyvar != "")
+		covend = covstart + cols(tokens(covsvars)) - 1
+		covs = data[,covstart..covend]
+	}
+	else covs = J(rows(data), 0, .)
 	if (clustvar != "") cluster = data[,cols(data)]
 	else cluster = J(0,1,.)
+	fitmethod = (strlower(strtrim(fitmethod)) == "separate" ? "separate" : "joint")
 	bw = rd2d_location_bw_full(y, x, d, b, "", fuzzy, cluster, p,
 		deriv, tangvec, kernel, kerneltype, bwselect, bwparam, method,
-		vce, bwcheck, masspoints, scaleregul, scalebiascrct, stdvars)
+		vce, bwcheck, masspoints, scaleregul, scalebiascrct, stdvars,
+		fitmethod, covs)
 	st_matrix(bw_name, bw)
 }
 
@@ -1340,9 +1599,9 @@ real rowvector rd2d_distance_intercepts_multi(real colvector y, real colvector f
 	return(beta[1,1], beta[1,2])
 }
 
-real rowvector rd2d_distance_side_constants(real colvector u, real colvector y,
+real rowvector rd2d_distance_side_constants_adj(real colvector u, real colvector y,
 	real scalar h, real scalar p, struct rd2d_polyfit scalar model,
-	string scalar vce, string scalar kernel)
+	string scalar vce, string scalar kernel, real scalar scale_override)
 {
 	real colvector w, idx, ew, eX, eY, resd, hii, pow
 	real matrix R, sqrtw_R, invG, sigmahalf, sigma, pmatrix
@@ -1363,7 +1622,7 @@ real rowvector rd2d_distance_side_constants(real colvector u, real colvector y,
 	eN = rows(idx)
 	k = p + 1
 	vce = strlower(strtrim(vce))
-	if (vce == "hc1" & eN > k) {
+	if (scale_override >= . & vce == "hc1" & eN > k) {
 		resd = resd :* sqrt(eN / (eN - k))
 	}
 	else if (vce == "hc2" | vce == "hc3") {
@@ -1381,23 +1640,37 @@ real rowvector rd2d_distance_side_constants(real colvector u, real colvector y,
 	B = (coeff * model.coef)[1,1]
 	Reg = coeff[p + 2]^2 * model.se[p + 2]^2
 	V = (vec * invG * sigma * invG * vec')[1,1]
+	if (scale_override < .) V = V * scale_override
 	return((B, V, Reg, eN))
+}
+
+real rowvector rd2d_distance_side_constants(real colvector u, real colvector y,
+	real scalar h, real scalar p, struct rd2d_polyfit scalar model,
+	string scalar vce, string scalar kernel)
+{
+	return(rd2d_distance_side_constants_adj(u, y, h, p, model, vce, kernel, .))
 }
 
 real matrix rd2d_distance_bw_full(real matrix dist, real matrix b, string scalar hstr,
 	real colvector y, real colvector fuzzy, real scalar p, string scalar kernel,
 	string scalar bwselect, string scalar bwparam, string scalar vce,
 	real scalar bwcheck, real scalar kink1, string scalar kinkposstr,
-	real scalar scaleregul, real scalar cqt)
+	real scalar scaleregul, real scalar cqt, string scalar fitmethod,
+	real matrix covs)
 {
 	real matrix hraw, H, bw, results
 	real colvector sdist, u, u0, u1, y0, y1, f0, f1, idx0, idx1
+	real colvector ybase, fuzzybase
 	real colvector kinkpos, distkink
+	real matrix design, gamma, adjusted, outcomes
+	real colvector w0full, w1full
 	real rowvector b0, b1, c0, c1, mu0, mu1
+	real rowvector scales
 	struct rd2d_polyfit scalar fit0, fit1
 	real scalar neval, j, dn, dn0, dn1, bwmin0, bwmin1, bwmax0, bwmax1
 	real scalar thr0, thr1, tauitt, taufs, graditt, gradfs
 	real scalar VV, BB, BB0, BB1, hn, h0, h1, smooth, factor, M0, M1, M
+	real scalar covadj, n_cov, eN0, eN1
 
 	hraw = rd2d_parse_numlist(hstr, 1)
 	if (rows(hraw) > 0) {
@@ -1418,6 +1691,8 @@ real matrix rd2d_distance_bw_full(real matrix dist, real matrix b, string scalar
 	results = J(neval, 14, .)
 	bwselect = strlower(strtrim(bwselect))
 	bwparam = strlower(strtrim(bwparam))
+	fitmethod = (strlower(strtrim(fitmethod)) == "separate" ? "separate" : "joint")
+	covadj = (cols(covs) > 0)
 
 	for (j=1; j<=neval; j++) {
 		sdist = dist[,j]
@@ -1426,8 +1701,8 @@ real matrix rd2d_distance_bw_full(real matrix dist, real matrix b, string scalar
 		idx1 = sdist :>= 0
 		u0 = select(u, idx0)
 		u1 = select(u, idx1)
-		y0 = select(y, idx0)
-		y1 = select(y, idx1)
+		ybase = y
+		fuzzybase = fuzzy
 		dn = rd2d_rot_distance(u, kernel)
 		dn0 = dn
 		dn1 = dn
@@ -1445,14 +1720,29 @@ real matrix rd2d_distance_bw_full(real matrix dist, real matrix b, string scalar
 			dn0 = min((max((dn0, bwmin0)), bwmax0))
 			dn1 = min((max((dn1, bwmin1)), bwmax1))
 		}
+		n_cov = 0
+		if (covadj) {
+			if (rows(fuzzy) == rows(y) & bwparam == "main") outcomes = y, fuzzy
+			else outcomes = y
+			design = rd2d_basis1(u, p)
+			w0full = rd2d_distance_weights(sdist, dn0, 0, kernel)
+			w1full = rd2d_distance_weights(sdist, dn1, 1, kernel)
+			gamma = rd2d_covariate_gamma(design, w0full, w1full, outcomes, covs)
+			adjusted = rd2d_apply_covariates(outcomes, covs, gamma)
+			ybase = adjusted[,1]
+			if (rows(fuzzy) == rows(y) & bwparam == "main") fuzzybase = adjusted[,2]
+			n_cov = rd2d_covariate_rank(design, w0full, w1full, covs)
+		}
+		y0 = select(ybase, idx0)
+		y1 = select(ybase, idx1)
 		thr0 = rd2d_quantile(u0, cqt)
 		thr1 = rd2d_quantile(u1, cqt)
 		fit0 = rd2d_poly_fit1(select(y0, u0 :<= thr0), select(u0, u0 :<= thr0), p + 1)
 		fit1 = rd2d_poly_fit1(select(y1, u1 :<= thr1), select(u1, u1 :<= thr1), p + 1)
 
 		if (rows(fuzzy) == rows(y) & bwparam == "main") {
-			f0 = select(fuzzy, idx0)
-			f1 = select(fuzzy, idx1)
+			f0 = select(fuzzybase, idx0)
+			f1 = select(fuzzybase, idx1)
 			mu0 = rd2d_distance_intercepts_multi(y0, f0, u0, dn0, p, kernel)
 			mu1 = rd2d_distance_intercepts_multi(y1, f1, u1, dn1, p, kernel)
 			tauitt = mu1[1] - mu0[1]
@@ -1467,8 +1757,11 @@ real matrix rd2d_distance_bw_full(real matrix dist, real matrix b, string scalar
 			}
 		}
 
-		c0 = rd2d_distance_side_constants(u0, y0, dn0, p, fit0, vce, kernel)
-		c1 = rd2d_distance_side_constants(u1, y1, dn1, p, fit1, vce, kernel)
+		eN0 = sum(rd2d_kernel(u0:/dn0, kernel) :> 0)
+		eN1 = sum(rd2d_kernel(u1:/dn1, kernel) :> 0)
+		scales = rd2d_bw_vce_scales(fitmethod, vce, covadj, eN0, eN1, p + 1, n_cov)
+		c0 = rd2d_distance_side_constants_adj(u0, y0, dn0, p, fit0, vce, kernel, scales[1])
+		c1 = rd2d_distance_side_constants_adj(u1, y1, dn1, p, fit1, vce, kernel, scales[2])
 		results[j,.] = (., ., c0[1], c1[1], c0[2], c1[2], c0[3], c1[3],
 			c0[4], c1[4], bwmin0, bwmin1, bwmax0, bwmax1)
 	}
@@ -1615,19 +1908,25 @@ real matrix rd2d_apply_distance_bwcheck(real matrix H, real matrix dist,
 
 struct rd2d_orderfit scalar rd2d_fit_distance_order(real matrix outcomes, real matrix dist,
 	real matrix H, real scalar p, string scalar kernel, string scalar vce,
-	real colvector cluster)
+	real colvector cluster, string scalar fitmethod, real matrix covs)
 {
 	struct rd2d_orderfit scalar out
 	struct rd2d_lfit scalar fit0, fit1
-	real matrix design
-	real colvector sdist, u, w0, w1
+	real matrix design, outcomes_fit, gamma
+	real colvector sdist, u, w0, w1, active, clactive, cl0, cl1
 	real rowvector target
-	real scalar j, n, neval, nout, ninf
+	real scalar j, n, neval, nout, ninf, covadj, n_cov, clustered, e0, e1, kpoly
+	real scalar scale0, scale1
+	string scalar vce_local
 
 	n = rows(dist)
 	neval = cols(dist)
 	nout = cols(outcomes)
 	ninf = (rows(cluster)==n ? rows(uniqrows(sort(cluster,1))) : n)
+	covadj = (cols(covs) > 0)
+	clustered = (rows(cluster) == n)
+	fitmethod = strlower(strtrim(fitmethod))
+	vce = strlower(strtrim(vce))
 	out.mu0 = J(neval, nout, .)
 	out.mu1 = J(neval, nout, .)
 	out.se0 = J(neval, nout, .)
@@ -1646,8 +1945,35 @@ struct rd2d_orderfit scalar rd2d_fit_distance_order(real matrix outcomes, real m
 		design = rd2d_basis1(u, p)
 		w0 = rd2d_distance_weights(sdist, H[j,1], 0, kernel)
 		w1 = rd2d_distance_weights(sdist, H[j,2], 1, kernel)
-		fit0 = rd2d_local_fit(design, w0, outcomes, target, vce, cluster)
-		fit1 = rd2d_local_fit(design, w1, outcomes, target, vce, cluster)
+		outcomes_fit = outcomes
+		n_cov = 0
+		if (covadj) {
+			gamma = rd2d_covariate_gamma(design, w0, w1, outcomes, covs)
+			n_cov = rd2d_covariate_rank(design, w0, w1, covs)
+			outcomes_fit = rd2d_apply_covariates(outcomes, covs, gamma)
+		}
+		e0 = sum(w0 :> 0)
+		e1 = sum(w1 :> 0)
+		kpoly = cols(design)
+		vce_local = ((fitmethod == "joint" | covadj) & vce == "hc1") ? "hc0" : vce
+		scale0 = .
+		scale1 = .
+		if ((fitmethod == "joint" | covadj) & (vce == "hc1" | clustered)) {
+			if (fitmethod == "joint") {
+				active = (w0 :> 0) :| (w1 :> 0)
+				clactive = clustered ? select(cluster, active) : J(0,1,.)
+				scale0 = rd2d_joint_vce_scale(vce, e0 + e1, 2*kpoly + n_cov, clactive, clustered)
+				scale1 = scale0
+			}
+			else {
+				cl0 = clustered ? select(cluster, w0 :> 0) : J(0,1,.)
+				cl1 = clustered ? select(cluster, w1 :> 0) : J(0,1,.)
+				scale0 = rd2d_joint_vce_scale(vce, e0, kpoly + n_cov, cl0, clustered)
+				scale1 = rd2d_joint_vce_scale(vce, e1, kpoly + n_cov, cl1, clustered)
+			}
+		}
+		fit0 = rd2d_local_fit_scaled(design, w0, outcomes_fit, target, vce_local, cluster, scale0)
+		fit1 = rd2d_local_fit_scaled(design, w1, outcomes_fit, target, vce_local, cluster, scale1)
 		out.mu0[j,.] = fit0.estimate
 		out.mu1[j,.] = fit1.estimate
 		out.se0[j,.] = fit0.se
@@ -1676,19 +2002,21 @@ void rd2d_distance_stata(string scalar main_name, string scalar bw_name,
 	real scalar q, string scalar kernel, string scalar vce, real scalar level,
 	string scalar side, string scalar bwselect, string scalar bwparam,
 	real scalar bwcheck, real scalar kink1, real scalar kink2,
-	string scalar kinkposstr, real scalar scaleregul, real scalar cqt)
+	string scalar kinkposstr, real scalar scaleregul, real scalar cqt,
+	string scalar fitmethod, string scalar covsvars)
 {
-	real matrix data, dist, b, bw, H, Hr, outcomes
+	real matrix data, dist, b, bw, H, Hr, outcomes, covs
 	real matrix main, main0, main1, itt, fs, itt0, itt1, fs0, fs1
 	real matrix Vmain, Vitt, Vfs, Vitt0, Vitt1, Vfs0, Vfs1
 	real colvector y, fuzzy, cluster, taup, tauq, sep, seq
 	real colvector itt_p, itt_q, fs_p, fs_q, se_itt_p, se_itt_q, se_fs_p, se_fs_q
 	real matrix inflp, inflq, infl_itt_p, infl_itt_q, infl_fs_p, infl_fs_q
 	struct rd2d_orderfit scalar fitp, fitq
-	real scalar neval, smooth
+	real scalar neval, smooth, covstart, covend
 
 	data = st_data(., yvar+" "+distvars+
 		(fuzzyvar=="" ? "" : " "+fuzzyvar)+
+		(covsvars=="" ? "" : " "+covsvars)+
 		(clustvar=="" ? "" : " "+clustvar), touse)
 	y = data[,1]
 	neval = cols(tokens(distvars))
@@ -1701,12 +2029,20 @@ void rd2d_distance_stata(string scalar main_name, string scalar bw_name,
 	}
 	if (fuzzyvar != "") fuzzy = data[,2+neval]
 	else fuzzy = J(0,1,.)
+	if (covsvars != "") {
+		covstart = 2 + neval + (fuzzyvar != "")
+		covend = covstart + cols(tokens(covsvars)) - 1
+		covs = data[,covstart..covend]
+	}
+	else covs = J(rows(data), 0, .)
 	if (clustvar != "") cluster = data[,cols(data)]
 	else cluster = J(0,1,.)
+	fitmethod = (strlower(strtrim(fitmethod)) == "separate" ? "separate" : "joint")
 	if (q < 0) q = kink1 ? p : p + 1
 
 	bw = rd2d_distance_bw_full(dist, b, hstr, y, fuzzy, p, kernel,
-		bwselect, bwparam, vce, bwcheck, kink1, kinkposstr, scaleregul, cqt)
+		bwselect, bwparam, vce, bwcheck, kink1, kinkposstr, scaleregul, cqt,
+		fitmethod, covs)
 	H = bw[,(3,4)]
 	H = rd2d_apply_distance_bwcheck(H, dist, bwcheck)
 	Hr = H
@@ -1722,8 +2058,8 @@ void rd2d_distance_stata(string scalar main_name, string scalar bw_name,
 	}
 	if (fuzzyvar == "") outcomes = y
 	else outcomes = y, fuzzy
-	fitp = rd2d_fit_distance_order(outcomes, dist, H, p, kernel, vce, cluster)
-	fitq = (q == p & all(vec(H :== Hr)) ? fitp : rd2d_fit_distance_order(outcomes, dist, Hr, q, kernel, vce, cluster))
+	fitp = rd2d_fit_distance_order(outcomes, dist, H, p, kernel, vce, cluster, fitmethod, covs)
+	fitq = (q == p & all(vec(H :== Hr)) ? fitp : rd2d_fit_distance_order(outcomes, dist, Hr, q, kernel, vce, cluster, fitmethod, covs))
 
 	if (fuzzyvar == "") {
 		taup = fitp.mu1[,1] - fitp.mu0[,1]
@@ -1818,14 +2154,16 @@ void rdbw2d_distance_stata(string scalar bw_name, string scalar yvar,
 	string scalar touse, string scalar bstr, real scalar p, string scalar kernel,
 	string scalar bwselect, string scalar bwparam, string scalar vce,
 	real scalar bwcheck, real scalar kink1, string scalar kinkposstr,
-	real scalar scaleregul, real scalar cqt)
+	real scalar scaleregul, real scalar cqt, string scalar fitmethod,
+	string scalar covsvars)
 {
-	real matrix data, dist, b, bw
+	real matrix data, dist, b, bw, covs
 	real colvector y, fuzzy
-	real scalar neval
+	real scalar neval, covstart, covend
 
 	data = st_data(., yvar+" "+distvars+
 		(fuzzyvar=="" ? "" : " "+fuzzyvar)+
+		(covsvars=="" ? "" : " "+covsvars)+
 		(clustvar=="" ? "" : " "+clustvar), touse)
 	y = data[,1]
 	neval = cols(tokens(distvars))
@@ -1838,8 +2176,16 @@ void rdbw2d_distance_stata(string scalar bw_name, string scalar yvar,
 	}
 	if (fuzzyvar != "") fuzzy = data[,2+neval]
 	else fuzzy = J(0,1,.)
+	if (covsvars != "") {
+		covstart = 2 + neval + (fuzzyvar != "")
+		covend = covstart + cols(tokens(covsvars)) - 1
+		covs = data[,covstart..covend]
+	}
+	else covs = J(rows(data), 0, .)
+	fitmethod = (strlower(strtrim(fitmethod)) == "separate" ? "separate" : "joint")
 	bw = rd2d_distance_bw_full(dist, b, "", y, fuzzy, p, kernel,
-		bwselect, bwparam, vce, bwcheck, kink1, kinkposstr, scaleregul, cqt)
+		bwselect, bwparam, vce, bwcheck, kink1, kinkposstr, scaleregul, cqt,
+		fitmethod, covs)
 	st_matrix(bw_name, bw)
 }
 
@@ -1849,24 +2195,29 @@ if "`rd2d_loadonly'" != "1" {
 	capture erase lrd2d.mlib
 	mata: mata mlib create lrd2d, replace
 	mata: mata mlib add lrd2d rd2d_lfit() rd2d_orderfit() ///
-		rd2d_bwfit() rd2d_bwconst() rd2d_polyfit()
+		rd2d_bwfit() rd2d_bwconst() rd2d_polyfit() rd2d_covcomp()
 	mata: mata mlib add lrd2d rd2d_mlib_loaded() rd2d_parse_numlist() ///
 		rd2d_parse_kink_position() rd2d_distance_to_known_kink() ///
 		rd2d_fact() rd2d_cer_factor() rd2d_bwbase() rd2d_is_cer() ///
 		rd2d_is_common() rd2d_kernel() rd2d_basis1() rd2d_basis2() ///
 		rd2d_target2() rd2d_target1() rd2d_location_weights() ///
-		rd2d_distance_weights() rd2d_local_fit()
+		rd2d_distance_weights() rd2d_local_fit() rd2d_local_fit_scaled() ///
+		rd2d_joint_vce_scale() rd2d_projection_components() ///
+		rd2d_covariate_gamma() rd2d_covariate_rank() ///
+		rd2d_apply_covariates() rd2d_bw_vce_scales()
 	mata: mata mlib add lrd2d rd2d_basis_count2() rd2d_H2() ///
 		rd2d_invH2() rd2d_vce_const2() rd2d_lm_exact2() ///
 		rd2d_lm_multi_exact2() rd2d_get_coeff_exact2() ///
-		rd2d_bw_v2_exact2() rd2d_rot_location() rd2d_rot_distance() ///
+		rd2d_bw_v2_exact2_adj() rd2d_bw_v2_exact2() ///
+		rd2d_rot_location() rd2d_rot_distance() ///
 		rd2d_kth_bounds() rd2d_quantile() rd2d_apply_location_bwcheck() ///
 		rd2d_location_bw_simple() rd2d_location_bw_full()
 	mata: mata mlib add lrd2d rd2d_fit_location_order() rd2d_ci_table() ///
 		rd2d_location_stata() rdbw2d_location_stata() ///
 		rd2d_distance_bw_simple() rd2d_poly_fit1() rd2d_vce_const1() ///
 		rd2d_distance_intercepts_multi() rd2d_distance_side_constants() ///
-		rd2d_distance_bw_full() rd2d_apply_distance_bwcheck() ///
+		rd2d_distance_side_constants_adj() rd2d_distance_bw_full() ///
+		rd2d_apply_distance_bwcheck() ///
 		rd2d_fit_distance_order() rd2d_distance_stata() ///
 		rdbw2d_distance_stata()
 	mata: mata mlib index

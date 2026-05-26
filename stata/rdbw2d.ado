@@ -2,7 +2,7 @@
 * RD2D STATA PACKAGE -- rdbw2d
 * Authors: Matias D. Cattaneo, Rocio Titiunik, Ruiqi Rae Yu
 ********************************************************************************
-*!version 0.2.0  2026-05-23
+*!version 1.0.0  2026-05-26
 
 capture program drop rdbw2d
 program define rdbw2d, eclass
@@ -12,7 +12,8 @@ program define rdbw2d, eclass
 		  P(integer 1) KERnel(string) KERNELtype(string) ///
 		  BWSELECT(string) BWPARAM(string) Method(string) VCE(string) ///
 		  BWCHECK(integer 20) MASSpoints(string) CLuster(varname numeric) ///
-		  SCALEREGUL(real 1) SCALEBIASCRCT(real 1) STDVARS(string) ]
+		  SCALEREGUL(real 1) SCALEBIASCRCT(real 1) STDVARS(string) ///
+		  FITMethod(string) COVSEFF(varlist numeric) ]
 
 	marksample touse
 	tokenize `varlist'
@@ -23,6 +24,7 @@ program define rdbw2d, eclass
 
 	markout `touse' `y' `x1' `x2' `d'
 	if "`fuzzy'" != "" markout `touse' `fuzzy'
+	if "`covseff'" != "" markout `touse' `covseff'
 	if "`cluster'" != "" markout `touse' `cluster'
 
 	if "`kernel'" == "" local kernel "tri"
@@ -32,6 +34,12 @@ program define rdbw2d, eclass
 	if "`method'" == "" local method "dpi"
 	if "`vce'" == "" local vce "hc1"
 	if "`masspoints'" == "" local masspoints "check"
+	if "`fitmethod'" == "" local fitmethod "joint"
+	local fitmethod = lower("`fitmethod'")
+	if !inlist("`fitmethod'", "joint", "separate") {
+		di as error "fitmethod() must be joint or separate"
+		exit 198
+	}
 	local stdflag = 1
 	if lower("`stdvars'") == "off" local stdflag = 0
 
@@ -53,7 +61,7 @@ program define rdbw2d, eclass
 		st_local("deriv"), st_local("tangvec"), `p', ///
 		"`kernel'", "`kerneltype'", "`bwselect'", "`bwparam'", ///
 		"`method'", "`vce'", `bwcheck', "`masspoints'", ///
-		`scaleregul', `scalebiascrct', `stdflag')
+		`scaleregul', `scalebiascrct', `stdflag', "`fitmethod'", "`covseff'")
 
 	matrix colnames `bw' = b1 b2 h01 h02 h11 h12 N_Co N_Tr
 	ereturn clear
@@ -69,8 +77,10 @@ program define rdbw2d, eclass
 	ereturn local bwparam "`bwparam'"
 	ereturn local method "`method'"
 	ereturn local vce "`vce'"
+	ereturn local fitmethod "`fitmethod'"
 	ereturn local masspoints "`masspoints'"
 	ereturn local fuzzy "`fuzzy'"
+	ereturn local covseff "`covseff'"
 
 	di as text _newline "Location-based bandwidth selection"
 	matlist e(bws), names(columns) format(%10.4f)

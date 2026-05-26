@@ -15,8 +15,10 @@
 #' \link{rd2d.distance} for distance-based estimation and inference, and
 #' \link{rdbw2d.distance} for distance-based bandwidth selection.
 #'
-#' \code{print()} and \code{summary()} methods are available for all four
-#' functions.
+#' \code{print()}, \code{summary()}, and \code{plot()} methods are available
+#' for all four functions. Estimation objects returned by \code{rd2d} and
+#' \code{rd2d.distance} also support \code{coef()}, \code{vcov()}, and
+#' \code{confint()}.
 #'
 #' Related Stata, R, and Python packages useful for inference in RD designs are
 #' described at:

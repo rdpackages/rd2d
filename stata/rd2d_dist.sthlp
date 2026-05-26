@@ -1,5 +1,5 @@
 {smcl}
-{* *!version 0.2.0  2026-05-23}{...}
+{* *!version 1.0.0  2026-05-26}{...}
 {viewerjumpto "Syntax" "rd2d_dist##syntax"}{...}
 {viewerjumpto "Description" "rd2d_dist##description"}{...}
 {viewerjumpto "Options" "rd2d_dist##options"}{...}
@@ -27,6 +27,8 @@
 {cmd:bwselect(}{it:selector}{cmd:)}
 {cmd:bwparam(}{it:target}{cmd:)}
 {cmd:vce(}{it:vcetype}{cmd:)}
+{cmd:fitmethod(}{it:method}{cmd:)}
+{cmd:covseff(}{it:varlist}{cmd:)}
 {cmd:bwcheck(}{it:#}{cmd:)}
 {cmd:masspoints(}{it:masspointsoption}{cmd:)}
 {cmd:cluster(}{it:clustvar}{cmd:)}
@@ -75,6 +77,10 @@
 
 {p 4 8}{cmd:cluster()} specifies a cluster ID variable. When supplied, cluster-level influence sums with degrees-of-freedom weights are used.{p_end}
 
+{p 4 8}{cmd:fitmethod()} specifies the fitting convention used for estimation, inference, and automatic bandwidth selection. The default, {cmd:fitmethod(joint)}, uses the joint treatment-interacted regression convention. {cmd:fitmethod(separate)} uses the legacy two-sample side-specific fitting convention. Point estimates are unchanged without covariates, but HC1 and clustered-robust standard errors may differ because the joint method counts degrees of freedom and clusters jointly across sides.{p_end}
+
+{p 4 8}{cmd:covseff(}{it:varlist}{cmd:)} specifies pre-intervention covariates used for efficiency adjustment. Covariates enter with common coefficients across treatment sides after residualizing on the side-specific local polynomial bases. When {cmd:h()} is omitted, the same covariate adjustment is propagated to automatic bandwidth selection.{p_end}
+
 {p 4 8}{cmd:level()} sets the confidence level. Default is {cmd:level(95)}.{p_end}
 
 {p 4 8}{cmd:side()} specifies the type of confidence interval. Available choices are:{p_end}
@@ -121,8 +127,10 @@
 {p 8 8}{cmd:. generate double d = x >= 0}{p_end}
 {p 8 8}{cmd:. generate double y = 1 + 2*x + 1.5*d + rnormal()*.5}{p_end}
 {p 8 8}{cmd:. rd2d_dist y x, b(0 0) h(.5)}{p_end}
+{p 8 8}{cmd:. generate double z = x + rnormal()}{p_end}
+{p 8 8}{cmd:. rd2d_dist y x, b(0 0) h(.5) covseff(z) fitmethod(joint)}{p_end}
 
 {marker stored_results}{...}
 {title:Stored results}
 
-{p 4 8}{cmd:rd2d_dist} stores {cmd:e(main)}, {cmd:e(bw)}, {cmd:e(V_main)}, and, when applicable, {cmd:e(itt)}, {cmd:e(fs)}, {cmd:e(itt_0)}, {cmd:e(itt_1)}, {cmd:e(fs_0)}, {cmd:e(fs_1)}, plus covariance matrices {cmd:e(V_itt)}, {cmd:e(V_fs)}, {cmd:e(V_itt_0)}, {cmd:e(V_itt_1)}, {cmd:e(V_fs_0)}, and {cmd:e(V_fs_1)}.{p_end}
+{p 4 8}{cmd:rd2d_dist} stores {cmd:e(main)}, {cmd:e(bw)}, {cmd:e(V_main)}, and, when applicable, {cmd:e(itt)}, {cmd:e(fs)}, {cmd:e(itt_0)}, {cmd:e(itt_1)}, {cmd:e(fs_0)}, {cmd:e(fs_1)}, plus covariance matrices {cmd:e(V_itt)}, {cmd:e(V_fs)}, {cmd:e(V_itt_0)}, {cmd:e(V_itt_1)}, {cmd:e(V_fs_0)}, and {cmd:e(V_fs_1)}. Option labels include {cmd:e(fitmethod)} and {cmd:e(covseff)} when supplied.{p_end}

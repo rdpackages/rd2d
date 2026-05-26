@@ -69,6 +69,7 @@ def main() -> None:
     Y = dat["Y"]
     A = dat["assignment"]
     D = dat["fuzzy"]
+    Z = dat[["Z.1", "Z.2"]]
 
     neval = int(os.getenv("RD2D_ILLUSTRATION_NEVAL", "40"))
     repp = int(os.getenv("RD2D_ILLUSTRATION_REPP", "499"))
@@ -77,8 +78,8 @@ def main() -> None:
     wbate_weights = np.ones(len(eval_points))
     selected = [i - 1 for i in [1, 5, 10, 15, 21, 25, 30, 35, 40] if i <= neval]
 
-    # Location-based bandwidth selection.
-    bw_location = rdbw2d(Y, X, A, eval_points, masspoints="off")
+    # Location-based bandwidth selection with covariate adjustment.
+    bw_location = rdbw2d(Y, X, A, eval_points, covs_eff=Z, fitmethod="joint", masspoints="off")
     print(bw_location.bws.iloc[selected])
 
     # Location-based fuzzy estimation.
@@ -90,6 +91,8 @@ def main() -> None:
         fuzzy=D,
         params_other="itt.0",
         params_cov=["main", "itt", "fs", "itt.0"],
+        covs_eff=Z,
+        fitmethod="joint",
         masspoints="off",
     )
 
@@ -133,8 +136,8 @@ def main() -> None:
     )
     print(display_table(summary_location_itt0.tables["itt.0"], selected))
 
-    # Distance-based bandwidth selection.
-    bw_distance = rdbw2d_dist(Y, distance, b=eval_points, masspoints="off")
+    # Distance-based bandwidth selection with covariate adjustment.
+    bw_distance = rdbw2d_dist(Y, distance, b=eval_points, covs_eff=Z, fitmethod="joint", masspoints="off")
     print(bw_distance.bws.iloc[selected])
 
     # Distance-based sharp estimation.
@@ -142,6 +145,8 @@ def main() -> None:
         Y,
         distance,
         b=eval_points,
+        covs_eff=Z,
+        fitmethod="joint",
         masspoints="off",
         cbands=True,
     )
@@ -158,6 +163,8 @@ def main() -> None:
         distance,
         b=eval_points,
         fuzzy=D,
+        covs_eff=Z,
+        fitmethod="joint",
         bwparam="itt",
         masspoints="off",
     )
@@ -169,6 +176,8 @@ def main() -> None:
         distance,
         b=eval_points,
         fuzzy=D,
+        covs_eff=Z,
+        fitmethod="joint",
         bwparam="itt",
         params_cov=["main", "itt", "fs"],
         masspoints="off",

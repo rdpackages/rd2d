@@ -6,6 +6,8 @@ variables. The package includes location-based and distance-based methods,
 sharp and fuzzy designs, pointwise confidence intervals, covariance-backed
 summary inference, uniform confidence bands, and aggregate boundary effect
 summaries.
+The default fitting method is the joint treatment-interacted regression; use
+`fitmethod="separate"` to reproduce the earlier two-sample fitting path.
 
 ```python
 from rd2d import rd2d, rdbw2d, rd2d_dist, rdbw2d_dist, summary
@@ -60,6 +62,14 @@ b = np.array([[0.0, 0.0], [0.0, 1.0]])
 fit = rd2d(y, x, assignment, b, h=0.9, params_cov="main")
 fit.main
 fit.summary(cbands="main", repp=999).tables["main"]
+```
+
+Pre-intervention covariates can be supplied for efficiency adjustment. The same
+covariate coefficient is used across treatment sides, matching the R package.
+
+```python
+z = np.column_stack([x1 + rng.normal(size=n), x2 + rng.normal(size=n)])
+fit_cov = rd2d(y, x, assignment, b, h=0.9, covs_eff=z, fitmethod="joint")
 ```
 
 For distance-based designs, pass one signed-distance column per evaluation

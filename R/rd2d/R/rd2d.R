@@ -73,6 +73,22 @@
 #' }
 #' @param cluster Cluster ID variable used for cluster-robust variance estimation
 #' with degrees-of-freedom weights. Default is \code{cluster = NULL}.
+#' @param covs.eff Optional pre-intervention covariates used for efficiency
+#' adjustment. Must be a numeric vector, matrix, or data frame with the same
+#' number of rows as \code{Y}. Covariate coefficients are constrained to be
+#' common across treatment sides.
+#' @param covs.drop Logical. If \code{TRUE} (default), redundant covariate
+#' columns are dropped from the common covariate-adjustment solve when the
+#' residualized covariate matrix is rank deficient. If \code{FALSE}, a
+#' generalized inverse is used instead.
+#' @param covs.tol Positive numeric tolerance used to detect rank deficiency
+#' in residualized \code{covs.eff}. Default is \code{1e-12}.
+#' @param fitmethod Estimation, inference, and automatic bandwidth-selection
+#' method. \code{"joint"} (default) uses treatment-side interacted local
+#' polynomial fits with joint variance corrections, including joint HC1
+#' degrees-of-freedom factors and, when \code{cluster} is supplied, joint
+#' cluster-score aggregation across treatment sides. \code{"separate"} uses
+#' the legacy side-specific fitting and covariance calculations.
 #' @param level Nominal confidence level for intervals/bands, between 0 and
 #' 100 (default is 95).
 #' @param params.other Optional character vector requesting companion-side
@@ -245,6 +261,8 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
                  kernel_type = c("prod","rad"),
                  vce = c("hc1","hc0","hc2","hc3"),
                  masspoints = c("check", "adjust", "off"),cluster = NULL,
+                 covs.eff = NULL, covs.drop = TRUE, covs.tol = 1e-12,
+                 fitmethod = c("joint", "separate"),
                  level = 95, params.other = NULL, params.cov = NULL,
                  side = c("two", "left", "right"),
                  bwselect = c("mserd", "cerrd", "imserd", "icerrd",
@@ -261,6 +279,7 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
   kernel_type <- match.arg(kernel_type)
   vce <- match.arg(vce)
   masspoints <- match.arg(masspoints)
+  fitmethod <- match.arg(fitmethod)
   side <- match.arg(side)
   bwselect <- match.arg(bwselect)
   bwparam <- match.arg(bwparam)
@@ -271,30 +290,43 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
   if (!is.fuzzy) bwparam <- "main"
 
   exit <- 0
+  errors <- character(0)
+  rd2d_add_error <- function(message) {
+    errors <<- c(errors, paste(message, collapse = " "))
+    exit <<- 1
+    invisible(NULL)
+  }
 
   # X must be matrix/data.frame with 2 columns before checking nrow/ncol.
   valid.X <- is.matrix(X) || is.data.frame(X)
   if (!valid.X || ncol(X) != 2) {
-    print("X must be a matrix or data frame with exactly 2 columns")
-    exit <- 1
+    rd2d_add_error("X must be a matrix or data frame with exactly 2 columns")
   } else if (length(Y) != length(d) || length(Y) != nrow(X)) {
-    print("Y, assignment, and rows of X must have the same length")
-    exit <- 1
+    rd2d_add_error("Y, assignment, and rows of X must have the same length")
   }
 
   if (is.fuzzy && length(fuzzy) != length(Y)) {
-    print("fuzzy must have the same length as Y")
-    exit <- 1
+    rd2d_add_error("fuzzy must have the same length as Y")
   }
 
   if (is.fuzzy && !(is.logical(fuzzy) || is.numeric(fuzzy))) {
-    print("fuzzy must be a logical or numeric vector")
-    exit <- 1
+    rd2d_add_error("fuzzy must be a logical or numeric vector")
   }
 
   if (!is.null(cluster) && length(cluster) != length(Y)) {
-    print("cluster must have the same length as Y")
-    exit <- 1
+    rd2d_add_error("cluster must have the same length as Y")
+  }
+
+  cov.prep <- tryCatch(
+    rd2d_prepare_cov_eff(covs.eff, length(Y)),
+    error = function(e) {
+      rd2d_add_error(conditionMessage(e))
+      list(matrix = NULL, names = NULL)
+    }
+  )
+  rank.option.errors <- rd2d_validate_covs_rank_options(covs.drop, covs.tol)
+  if (length(rank.option.errors) > 0) {
+    for (err in rank.option.errors) rd2d_add_error(err)
   }
 
   allowed.params.other <- c(
@@ -307,16 +339,14 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
   if (is.null(params.other)) {
     params.other <- character(0)
   } else if (!is.character(params.other) || any(is.na(params.other))) {
-    print("params.other must be NULL or a character vector")
-    exit <- 1
+    rd2d_add_error("params.other must be NULL or a character vector")
   } else if (!all(params.other %in% allowed.params.other)) {
-    print(
+    rd2d_add_error(
       paste(
         "params.other must contain only:",
         paste(allowed.params.other, collapse = ", ")
       )
     )
-    exit <- 1
   } else {
     params.other <- unique(params.other)
   }
@@ -324,16 +354,14 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
   if (is.null(params.cov)) {
     params.cov <- character(0)
   } else if (!is.character(params.cov) || any(is.na(params.cov))) {
-    print("params.cov must be NULL or a character vector")
-    exit <- 1
+    rd2d_add_error("params.cov must be NULL or a character vector")
   } else if (!all(params.cov %in% allowed.params.cov)) {
-    print(
+    rd2d_add_error(
       paste(
         "params.cov must contain only:",
         paste(allowed.params.cov, collapse = ", ")
       )
     )
-    exit <- 1
   } else {
     params.cov <- unique(params.cov)
   }
@@ -342,14 +370,12 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
     if (is.fuzzy) {
       invalid.design.params <- intersect(params.other, c("main.0", "main.1"))
       if (length(invalid.design.params) > 0) {
-        print("main.0 and main.1 are available only for sharp rd2d fits")
-        exit <- 1
+        rd2d_add_error("main.0 and main.1 are available only for sharp rd2d fits")
       }
     } else {
       invalid.design.params <- setdiff(params.other, c("main.0", "main.1"))
       if (length(invalid.design.params) > 0) {
-        print("itt.0, itt.1, fs.0, and fs.1 are available only for fuzzy rd2d fits")
-        exit <- 1
+        rd2d_add_error("itt.0, itt.1, fs.0, and fs.1 are available only for fuzzy rd2d fits")
       }
     }
   }
@@ -358,64 +384,58 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
     if (is.fuzzy) {
       invalid.cov <- intersect(params.cov, c("main.0", "main.1"))
       if (length(invalid.cov) > 0) {
-        print("main.0 and main.1 covariance matrices are available only for sharp rd2d fits")
-        exit <- 1
+        rd2d_add_error("main.0 and main.1 covariance matrices are available only for sharp rd2d fits")
       }
       missing.side.cov <- setdiff(
         intersect(params.cov, c("itt.0", "itt.1", "fs.0", "fs.1")),
         params.other
       )
       if (length(missing.side.cov) > 0) {
-        print(
+        rd2d_add_error(
           paste(
             "params.cov side outputs must also be requested in params.other:",
             paste(missing.side.cov, collapse = ", ")
           )
         )
-        exit <- 1
       }
     } else {
       invalid.cov <- setdiff(params.cov, c("main", "main.0", "main.1"))
       if (length(invalid.cov) > 0) {
-        print("itt, itt.0, itt.1, fs, fs.0, and fs.1 covariance matrices are available only for fuzzy rd2d fits")
-        exit <- 1
+        rd2d_add_error("itt, itt.0, itt.1, fs, fs.0, and fs.1 covariance matrices are available only for fuzzy rd2d fits")
       }
       missing.side.cov <- setdiff(
         intersect(params.cov, c("main.0", "main.1")),
         params.other
       )
       if (length(missing.side.cov) > 0) {
-        print(
+        rd2d_add_error(
           paste(
             "params.cov side outputs must also be requested in params.other:",
             paste(missing.side.cov, collapse = ", ")
           )
         )
-        exit <- 1
       }
     }
   }
 
   # d must be logical or contain only 0 and 1
   if (!(is.logical(d) || all(d %in% c(0, 1)))) {
-    print(
+    rd2d_add_error(
       "d must be a logical vector or a numeric vector containing only 0 and 1"
     )
-    exit <- 1
   }
 
   # b must be a matrix with 2 columns
-  if (!(is.matrix(b) || is.data.frame(b)) || ncol(b) != 2) {
-    print("b must be a matrix with 2 columns")
-    exit <- 1
+  valid.b <- (is.matrix(b) || is.data.frame(b)) && ncol(b) == 2
+  if (!valid.b) {
+    rd2d_add_error("b must be a matrix with 2 columns")
   }
 
   valid.p <- is.numeric(p) && length(p) == 1 &&
     is.finite(p) && p >= 0 &&
     abs(p - round(p)) < sqrt(.Machine$double.eps)
   if (!valid.p) {
-    print("p must be a nonnegative integer")
-    exit <- 1
+    rd2d_add_error("p must be a nonnegative integer")
   } else {
     p <- as.integer(round(p))
   }
@@ -428,8 +448,7 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
     is.finite(q) && q >= 0 &&
     abs(q - round(q)) < sqrt(.Machine$double.eps)
   if (!valid.q) {
-    print("q must be a nonnegative integer")
-    exit <- 1
+    rd2d_add_error("q must be a nonnegative integer")
   } else {
     q <- as.integer(round(q))
   }
@@ -438,29 +457,26 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
   if (!is.null(h)) {
     if (length(h) == 1) {
       if (!is.numeric(h) || !is.finite(h) || h <= 0) {
-        print("If h is a scalar, it must be a positive numeric value")
-        exit <- 1
-      }
+        rd2d_add_error("If h is a scalar, it must be a positive numeric value")
+    }
     } else if (!(is.matrix(h) || is.data.frame(h)) ||
-               nrow(h) != nrow(b) || ncol(h) != 4) {
-      print(
+               !valid.b || nrow(h) != nrow(b) || ncol(h) != 4) {
+      rd2d_add_error(
         paste(
           "If h is not a scalar, it must be a matrix or data frame with",
           "the same number of rows as b and 4 columns"
         )
       )
-      exit <- 1
     } else {
       h.numeric <- suppressWarnings(as.matrix(h) + 0)
       if (!is.numeric(h.numeric) || any(!is.finite(h.numeric)) ||
           any(h.numeric <= 0)) {
-        print(
+        rd2d_add_error(
           paste(
             "If h is a matrix or data frame, all entries must be finite",
             "positive numeric values"
           )
         )
-        exit <- 1
       }
     }
   }
@@ -470,52 +486,45 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
     all(is.finite(deriv)) && all(deriv >= 0) &&
     all(abs(deriv - round(deriv)) < sqrt(.Machine$double.eps))
   if (!valid.deriv) {
-    print("deriv must be a nonnegative integer vector of length 2")
-    exit <- 1
+    rd2d_add_error("deriv must be a nonnegative integer vector of length 2")
   } else {
     deriv <- as.integer(round(deriv))
   }
   if (valid.deriv && valid.p && sum(deriv) > p) {
-    print(
+    rd2d_add_error(
       "Sum of deriv components must be less than or equal to polynomial order p"
     )
-    exit <- 1
   }
 
   # tangvec, if provided, must be matrix/data.frame matching b rows and cols
   if (!is.null(tangvec)) {
     if (!(is.matrix(tangvec) || is.data.frame(tangvec)) ||
-        nrow(tangvec) != nrow(b) || ncol(tangvec) != 2) {
-      warning(
+        !valid.b || nrow(tangvec) != nrow(b) || ncol(tangvec) != 2) {
+      rd2d_add_error(
         paste(
           "tangvec must be a matrix or data frame with same number of rows",
           "as b and 2 columns"
         )
       )
-      exit <- 1
     }
     if (valid.p && p < 1) {
-      print("tangvec requires polynomial order p >= 1")
-      exit <- 1
+      rd2d_add_error("tangvec requires polynomial order p >= 1")
     }
   }
 
   # level must be numeric in (0, 100)
   if (!is.numeric(level) || level <= 0 || level >= 100) {
-    print("level must be a numeric value between 0 and 100")
-    exit <- 1
+    rd2d_add_error("level must be a numeric value between 0 and 100")
   }
 
   if (valid.p && valid.q && q < p){
-    print("Parameter q must be no smaller than p. Please provide valid inputs.")
-    exit <- 1
+    rd2d_add_error("Parameter q must be no smaller than p. Please provide valid inputs.")
   }
 
   if (exit == 0 && !is.null(bwcheck)) {
     if (!is.numeric(bwcheck) || length(bwcheck) != 1 ||
         !is.finite(bwcheck) || bwcheck < 1 || bwcheck != as.integer(bwcheck)) {
-      print("bwcheck must be NULL or a positive integer")
-      exit <- 1
+      rd2d_add_error("bwcheck must be NULL or a positive integer")
     } else {
       bwcheck <- as.integer(bwcheck)
     }
@@ -531,7 +540,7 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
     vce <- "hc1"
   }
 
-  if (exit>0) stop()
+  if (exit>0) rd2d_stop_errors(errors)
 
   ############################ Data preparation ################################
 
@@ -539,6 +548,10 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
   dat <- as.data.frame(dat)
   colnames(dat) <- c("x.1", "x.2", "y", "d")
   if (is.fuzzy) dat$fuzzy <- as.numeric(fuzzy)
+  cov.names <- cov.prep$names
+  if (!is.null(cov.prep$matrix)) {
+    dat <- cbind(dat, as.data.frame(cov.prep$matrix))
+  }
   eval <- as.data.frame(b)
   colnames(eval) <- c("x.1", "x.2")
   neval <- dim(eval)[1]
@@ -547,12 +560,17 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
     complete.cases(dat$y) &
     complete.cases(dat$d)
   if (is.fuzzy) na.ok <- na.ok & complete.cases(dat$fuzzy)
+  if (!is.null(cov.names)) {
+    na.ok <- na.ok & complete.cases(dat[, cov.names, drop = FALSE])
+  }
   if (!is.null(cluster)) na.ok <- na.ok & complete.cases(cluster)
   dat <- dat[na.ok,]
   if (!is.null(cluster)) cluster <- cluster[na.ok]
   N <- dim(dat)[1]
   N.0 <- dim(dat[dat$d == 0,])[1]
   N.1 <- dim(dat[dat$d == 1,])[1]
+  rd2d_covs_rank_begin(cov.names, covs.drop, covs.tol)
+  on.exit(rd2d_covs_rank_end(), add = TRUE)
 
   if (is.null(p))         p <- 1
   kernel   <- tolower(kernel)
@@ -672,7 +690,14 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
       kernel_type = kernel_type, bwselect = bwselect, bwparam = bwparam,
       method = method,
       vce = vce, bwcheck = bwcheck, masspoints = masspoints,
-      cluster = cluster, scaleregul = scaleregul, scalebiascrct = scalebiascrct,
+      cluster = cluster, covs.eff = if (!is.null(cov.names)) {
+        as.matrix(dat[, cov.names, drop = FALSE])
+      } else {
+        NULL
+      },
+      covs.drop = covs.drop, covs.tol = covs.tol,
+      fitmethod = fitmethod,
+      scaleregul = scaleregul, scalebiascrct = scalebiascrct,
       stdvars = stdvars, fuzzy = if (is.fuzzy) dat$fuzzy else NULL
     )
     bws <- bws$bws
@@ -706,7 +731,8 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
   if (!is.fuzzy){
     rdfit.p <- rd2d_fit(
       dat, eval, e_deriv, deriv, p, hgrid, hgrid.1, kernel, kernel_type, vce,
-      masspoints, cluster, bwcheck, unique, bwcheck.bounds
+      masspoints, cluster, bwcheck, unique, bwcheck.bounds,
+      cov.names = cov.names
     )
     tau.hat.p <- rdfit.p$mu.1 - rdfit.p$mu.0
     se.hat.p <- sqrt(rdfit.p$se.0^2 + rdfit.p$se.1^2)
@@ -722,7 +748,8 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
     } else {
       rdfit.q <- rd2d_fit(
         dat, eval, e_deriv.q, deriv, q, hgrid, hgrid.1, kernel, kernel_type,
-        vce, masspoints, cluster, bwcheck, unique, bwcheck.bounds
+        vce, masspoints, cluster, bwcheck, unique, bwcheck.bounds,
+        cov.names = cov.names
       )
     }
     tau.hat.q <- rdfit.q$mu.1 - rdfit.q$mu.0
@@ -733,13 +760,63 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
     h.12.q <- rdfit.q$h.1.y
     eN.0.q <- rdfit.q$eN.0
     eN.1.q <- rdfit.q$eN.1
+
+    if (fitmethod == "joint" || !is.null(cov.names)) {
+      hgrid.p.fit <- cbind(h.01.p, h.02.p)
+      hgrid.1.p.fit <- cbind(h.11.p, h.12.p)
+      cov.p.main <- rdbw2d_cov(
+        dat, eval, e_deriv, deriv, p, hgrid.p.fit, hgrid.1.p.fit, kernel,
+        kernel_type, vce, cluster, fitmethod = fitmethod,
+        cov.names = cov.names
+      )
+      cov.p.0 <- rdbw2d_cov_side(
+        dat, eval, e_deriv, deriv, p, hgrid.p.fit, hgrid.1.p.fit, kernel,
+        kernel_type, vce, cluster, side = 0, fitmethod = fitmethod,
+        cov.names = cov.names
+      )
+      cov.p.1 <- rdbw2d_cov_side(
+        dat, eval, e_deriv, deriv, p, hgrid.p.fit, hgrid.1.p.fit, kernel,
+        kernel_type, vce, cluster, side = 1, fitmethod = fitmethod,
+        cov.names = cov.names
+      )
+      se.hat.p <- sqrt(pmax(diag(cov.p.main), 0))
+      rdfit.p$se.0 <- sqrt(pmax(diag(cov.p.0), 0))
+      rdfit.p$se.1 <- sqrt(pmax(diag(cov.p.1), 0))
+      if (q == p) {
+        se.hat.q <- se.hat.p
+        rdfit.q$se.0 <- rdfit.p$se.0
+        rdfit.q$se.1 <- rdfit.p$se.1
+      } else {
+        hgrid.q.fit <- cbind(h.01.q, h.02.q)
+        hgrid.1.q.fit <- cbind(h.11.q, h.12.q)
+        cov.q.main <- rdbw2d_cov(
+          dat, eval, e_deriv.q, deriv, q, hgrid.q.fit, hgrid.1.q.fit, kernel,
+          kernel_type, vce, cluster, fitmethod = fitmethod,
+          cov.names = cov.names
+        )
+        cov.q.0 <- rdbw2d_cov_side(
+          dat, eval, e_deriv.q, deriv, q, hgrid.q.fit, hgrid.1.q.fit, kernel,
+          kernel_type, vce, cluster, side = 0, fitmethod = fitmethod,
+          cov.names = cov.names
+        )
+        cov.q.1 <- rdbw2d_cov_side(
+          dat, eval, e_deriv.q, deriv, q, hgrid.q.fit, hgrid.1.q.fit, kernel,
+          kernel_type, vce, cluster, side = 1, fitmethod = fitmethod,
+          cov.names = cov.names
+        )
+        se.hat.q <- sqrt(pmax(diag(cov.q.main), 0))
+        rdfit.q$se.0 <- sqrt(pmax(diag(cov.q.0), 0))
+        rdfit.q$se.1 <- sqrt(pmax(diag(cov.q.1), 0))
+      }
+    }
   } else {
     dat.fs <- dat
     dat.fs$y <- dat$fuzzy
 
     rdfit.p.multi <- rd2d_fit_multi(
       dat, eval, e_deriv, deriv, p, hgrid, hgrid.1, kernel, kernel_type, vce,
-      masspoints, cluster, bwcheck, unique, bwcheck.bounds
+      masspoints, cluster, bwcheck, unique, bwcheck.bounds,
+      cov.names = cov.names
     )
     rdfit.itt.p <- rdfit.p.multi$y
     rdfit.fs.p <- rdfit.p.multi$fuzzy
@@ -753,7 +830,8 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
     } else {
       rdfit.q.multi <- rd2d_fit_multi(
         dat, eval, e_deriv.q, deriv, q, hgrid, hgrid.1, kernel, kernel_type,
-        vce, masspoints, cluster, bwcheck, unique, bwcheck.bounds
+        vce, masspoints, cluster, bwcheck, unique, bwcheck.bounds,
+        cov.names = cov.names
       )
     }
     rdfit.itt.q <- rdfit.q.multi$y
@@ -794,19 +872,67 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
     eN.0.q <- rdfit.itt.q$eN.0
     eN.1.q <- rdfit.itt.q$eN.1
 
-    se.hat.p <- rdbw2d_se_fuzzy(
-      dat, eval, e_deriv, deriv, p, hgrid, hgrid.1,
-      kernel, kernel_type, vce, cluster, tau.itt.p, tau.fs.p, se.itt.p, se.fs.p,
-      denom.tol = denom.tol
-    )
-    if (q == p) {
-      se.hat.q <- se.hat.p
-    } else {
-      se.hat.q <- rdbw2d_se_fuzzy(
-        dat, eval, e_deriv.q, deriv, q, hgrid, hgrid.1,
-        kernel, kernel_type, vce, cluster, tau.itt.q, tau.fs.q, se.itt.q, se.fs.q,
-        denom.tol = denom.tol
+    if (fitmethod == "joint" || !is.null(cov.names)) {
+      hgrid.p.fit <- cbind(h.01.p, h.02.p)
+      hgrid.1.p.fit <- cbind(h.11.p, h.12.p)
+      cov.p.fuzzy <- rdbw2d_cov_fuzzy_tables(
+        dat, eval, e_deriv, deriv, p, hgrid.p.fit, hgrid.1.p.fit,
+        kernel, kernel_type, vce, cluster, tau.itt.p, tau.fs.p,
+        outputs = c("main", "itt", "fs", "itt.0", "itt.1", "fs.0", "fs.1"),
+        denom.tol = denom.tol,
+        fitmethod = fitmethod, cov.names = cov.names
       )
+      se.hat.p <- sqrt(pmax(diag(cov.p.fuzzy$main), 0))
+      se.itt.p <- sqrt(pmax(diag(cov.p.fuzzy$itt), 0))
+      se.fs.p <- sqrt(pmax(diag(cov.p.fuzzy$fs), 0))
+      rdfit.itt.p$se.0 <- sqrt(pmax(diag(cov.p.fuzzy$itt.0), 0))
+      rdfit.itt.p$se.1 <- sqrt(pmax(diag(cov.p.fuzzy$itt.1), 0))
+      rdfit.fs.p$se.0 <- sqrt(pmax(diag(cov.p.fuzzy$fs.0), 0))
+      rdfit.fs.p$se.1 <- sqrt(pmax(diag(cov.p.fuzzy$fs.1), 0))
+
+      if (q == p) {
+        se.hat.q <- se.hat.p
+        se.itt.q <- se.itt.p
+        se.fs.q <- se.fs.p
+        rdfit.itt.q$se.0 <- rdfit.itt.p$se.0
+        rdfit.itt.q$se.1 <- rdfit.itt.p$se.1
+        rdfit.fs.q$se.0 <- rdfit.fs.p$se.0
+        rdfit.fs.q$se.1 <- rdfit.fs.p$se.1
+      } else {
+        hgrid.q.fit <- cbind(h.01.q, h.02.q)
+        hgrid.1.q.fit <- cbind(h.11.q, h.12.q)
+        cov.q.fuzzy <- rdbw2d_cov_fuzzy_tables(
+          dat, eval, e_deriv.q, deriv, q, hgrid.q.fit, hgrid.1.q.fit,
+          kernel, kernel_type, vce, cluster, tau.itt.q, tau.fs.q,
+          outputs = c("main", "itt", "fs", "itt.0", "itt.1", "fs.0", "fs.1"),
+          denom.tol = denom.tol,
+          fitmethod = fitmethod, cov.names = cov.names
+        )
+        se.hat.q <- sqrt(pmax(diag(cov.q.fuzzy$main), 0))
+        se.itt.q <- sqrt(pmax(diag(cov.q.fuzzy$itt), 0))
+        se.fs.q <- sqrt(pmax(diag(cov.q.fuzzy$fs), 0))
+        rdfit.itt.q$se.0 <- sqrt(pmax(diag(cov.q.fuzzy$itt.0), 0))
+        rdfit.itt.q$se.1 <- sqrt(pmax(diag(cov.q.fuzzy$itt.1), 0))
+        rdfit.fs.q$se.0 <- sqrt(pmax(diag(cov.q.fuzzy$fs.0), 0))
+        rdfit.fs.q$se.1 <- sqrt(pmax(diag(cov.q.fuzzy$fs.1), 0))
+      }
+    } else {
+      se.hat.p <- rdbw2d_se_fuzzy(
+        dat, eval, e_deriv, deriv, p, hgrid, hgrid.1,
+        kernel, kernel_type, vce, cluster, tau.itt.p, tau.fs.p,
+        se.itt.p, se.fs.p,
+        denom.tol = denom.tol, fitmethod = fitmethod, cov.names = cov.names
+      )
+      if (q == p) {
+        se.hat.q <- se.hat.p
+      } else {
+        se.hat.q <- rdbw2d_se_fuzzy(
+          dat, eval, e_deriv.q, deriv, q, hgrid, hgrid.1,
+          kernel, kernel_type, vce, cluster, tau.itt.q, tau.fs.q,
+          se.itt.q, se.fs.q,
+          denom.tol = denom.tol, fitmethod = fitmethod, cov.names = cov.names
+        )
+      }
     }
   }
 
@@ -831,74 +957,91 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
 
   # Covariance matrices are optional and stored only for later summary() use.
 
+  hgrid.cov <- hgrid
+  hgrid.1.cov <- hgrid.1
+  if (fitmethod == "joint" || !is.null(cov.names)) {
+    hgrid.cov <- cbind(h.01.q, h.02.q)
+    hgrid.1.cov <- cbind(h.11.q, h.12.q)
+  }
+
   cov.tables <- list()
   if (!is.fuzzy) {
     if ("main" %in% params.cov) {
       cov.tables$main <- rdbw2d_cov(
-        dat, eval, e_deriv.q, deriv, q, hgrid, hgrid.1, kernel,
-        kernel_type, vce, cluster
+        dat, eval, e_deriv.q, deriv, q, hgrid.cov, hgrid.1.cov, kernel,
+        kernel_type, vce, cluster, fitmethod = fitmethod,
+        cov.names = cov.names
       )
     }
     if ("main.0" %in% params.cov) {
       cov.tables$main.0 <- rdbw2d_cov_side(
-        dat, eval, e_deriv.q, deriv, q, hgrid, hgrid.1, kernel,
-        kernel_type, vce, cluster, side = 0
+        dat, eval, e_deriv.q, deriv, q, hgrid.cov, hgrid.1.cov, kernel,
+        kernel_type, vce, cluster, side = 0, fitmethod = fitmethod,
+        cov.names = cov.names
       )
     }
     if ("main.1" %in% params.cov) {
       cov.tables$main.1 <- rdbw2d_cov_side(
-        dat, eval, e_deriv.q, deriv, q, hgrid, hgrid.1, kernel,
-        kernel_type, vce, cluster, side = 1
+        dat, eval, e_deriv.q, deriv, q, hgrid.cov, hgrid.1.cov, kernel,
+        kernel_type, vce, cluster, side = 1, fitmethod = fitmethod,
+        cov.names = cov.names
       )
     }
   } else if (length(params.cov) > 0) {
     cov.tables <- rdbw2d_cov_fuzzy_tables(
-      dat, eval, e_deriv.q, deriv, q, hgrid, hgrid.1,
+      dat, eval, e_deriv.q, deriv, q, hgrid.cov, hgrid.1.cov,
       kernel, kernel_type, vce, cluster, tau.itt.q, tau.fs.q,
-      outputs = params.cov, denom.tol = denom.tol
+      outputs = params.cov, denom.tol = denom.tol, fitmethod = fitmethod,
+      cov.names = cov.names
     )
   } else {
     if ("main" %in% params.cov) {
       cov.tables$main <- rdbw2d_cov_fuzzy(
-        dat, eval, e_deriv.q, deriv, q, hgrid, hgrid.1,
+        dat, eval, e_deriv.q, deriv, q, hgrid.cov, hgrid.1.cov,
         kernel, kernel_type, vce, cluster, tau.itt.q, tau.fs.q,
-        denom.tol = denom.tol
+        denom.tol = denom.tol, fitmethod = fitmethod, cov.names = cov.names
       )
     }
     if ("itt" %in% params.cov) {
       cov.tables$itt <- rdbw2d_cov(
-        dat, eval, e_deriv.q, deriv, q, hgrid, hgrid.1, kernel,
-        kernel_type, vce, cluster
+        dat, eval, e_deriv.q, deriv, q, hgrid.cov, hgrid.1.cov, kernel,
+        kernel_type, vce, cluster, fitmethod = fitmethod,
+        cov.names = cov.names
       )
     }
     if ("fs" %in% params.cov) {
       cov.tables$fs <- rdbw2d_cov(
-        dat.fs, eval, e_deriv.q, deriv, q, hgrid, hgrid.1, kernel,
-        kernel_type, vce, cluster
+        dat.fs, eval, e_deriv.q, deriv, q, hgrid.cov, hgrid.1.cov, kernel,
+        kernel_type, vce, cluster, fitmethod = fitmethod,
+        cov.names = cov.names
       )
     }
     if ("itt.0" %in% params.cov) {
       cov.tables$itt.0 <- rdbw2d_cov_side(
-        dat, eval, e_deriv.q, deriv, q, hgrid, hgrid.1, kernel,
-        kernel_type, vce, cluster, side = 0
+        dat, eval, e_deriv.q, deriv, q, hgrid.cov, hgrid.1.cov, kernel,
+        kernel_type, vce, cluster, side = 0, fitmethod = fitmethod,
+        cov.names = cov.names
       )
     }
     if ("itt.1" %in% params.cov) {
       cov.tables$itt.1 <- rdbw2d_cov_side(
-        dat, eval, e_deriv.q, deriv, q, hgrid, hgrid.1, kernel,
-        kernel_type, vce, cluster, side = 1
+        dat, eval, e_deriv.q, deriv, q, hgrid.cov, hgrid.1.cov, kernel,
+        kernel_type, vce, cluster, side = 1, fitmethod = fitmethod,
+        cov.names = cov.names
       )
     }
     if ("fs.0" %in% params.cov) {
       cov.tables$fs.0 <- rdbw2d_cov_side(
-        dat.fs, eval, e_deriv.q, deriv, q, hgrid, hgrid.1, kernel,
-        kernel_type, vce, cluster, side = 0
+        dat.fs, eval, e_deriv.q, deriv, q, hgrid.cov, hgrid.1.cov, kernel,
+        kernel_type, vce, cluster, side = 0, fitmethod = fitmethod,
+        cov.names = cov.names
       )
     }
     if ("fs.1" %in% params.cov) {
       cov.tables$fs.1 <- rdbw2d_cov_side(
-        dat.fs, eval, e_deriv.q, deriv, q, hgrid, hgrid.1, kernel,
-        kernel_type, vce, cluster, side = 1
+        dat.fs, eval, e_deriv.q, deriv, q, hgrid.cov, hgrid.1.cov, kernel,
+        kernel_type, vce, cluster, side = 1, fitmethod = fitmethod,
+        cov.names = cov.names
       )
     }
   }
@@ -1081,6 +1224,7 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
     )
   }
 
+  covs.rank <- rd2d_covs_rank_summary()
   out <- c(
     result.tables,
     list(
@@ -1089,8 +1233,13 @@ rd2d <- function(Y, X, assignment, b, h = NULL, deriv = c(0,0), tangvec = NULL,
         kernel = kernel.type, kernel_type = kernel_type, N = N, N.0 = N.0,
         N.1 = N.1, M = M, M.0 = M.0, M.1 = M.1, neval = neval,
         bwselect = bwselect, bwparam = bwparam, method = method,
-        vce = vce, bwcheck = bwcheck,
+        vce = vce, fitmethod = fitmethod, bwcheck = bwcheck,
         masspoints = masspoints, cluster = cluster, clustered = clustered,
+        covs.eff = !is.null(cov.names), N.covs.eff = length(cov.names),
+        N.covs.used = covs.rank$used, covs.dropped = covs.rank$dropped,
+        covs.redundant = covs.rank$redundant,
+        covs.rank.deficient = covs.rank$rank.deficient,
+        covs.drop = covs.drop, covs.tol = covs.tol,
         scaleregul = scaleregul, scalebiascrct = scalebiascrct,
         stdvars = stdvars, fuzzy = is.fuzzy, level = level,
         side = side, params.other = params.other, params.cov = params.cov,
@@ -1169,6 +1318,8 @@ print.rd2d <- function(x,...) {
   cat(sprintf("BW type.               %s\n", bw.type))
   cat(sprintf("Kernel                 %s\n", kernel.name))
   cat(sprintf("VCE method             %s\n", vce.method))
+  cat(sprintf("Fit method             %s\n", x$opt$fitmethod))
+  rd2d_print_covs_eff(x$opt)
   cat(sprintf("Masspoints             %s\n", x$opt$masspoints))
   if (isTRUE(x$opt$fuzzy)) {
     cat(sprintf("Fuzzy                  on\n"))
@@ -1368,6 +1519,8 @@ summary.rd2d <- function(object, ...) {
   cat(sprintf("BW type.               %s\n", bw.type))
   cat(sprintf("Kernel                 %s\n", kernel.name))
   cat(sprintf("VCE method             %s\n", vce.method))
+  cat(sprintf("Fit method             %s\n", x$opt$fitmethod))
+  rd2d_print_covs_eff(x$opt)
   cat(sprintf("Masspoints             %s\n", x$opt$masspoints))
   if (isTRUE(x$opt$fuzzy)) {
     cat(sprintf("Fuzzy                  on\n"))

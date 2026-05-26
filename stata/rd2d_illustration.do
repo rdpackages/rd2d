@@ -17,6 +17,8 @@ recast double _all
 capture rename x_1 x1
 capture rename x_2 x2
 capture rename Y y
+capture rename Z_1 z1
+capture rename Z_2 z2
 
 * Set illustration inputs.
 local neval = 40
@@ -51,20 +53,20 @@ forvalues j = 1/`neval' {
 	generate double dist`j' = sqrt((x1 - `b1')^2 + (x2 - `b2')^2) * (2 * assignment - 1)
 }
 
-* Location-based bandwidth selection.
-rdbw2d y x1 x2 assignment, b(`bpoints') masspoints(off)
+* Location-based bandwidth selection with covariate adjustment.
+rdbw2d y x1 x2 assignment, b(`bpoints') covseff(z1 z2) fitmethod(joint) masspoints(off)
 
-* Location-based fuzzy estimation.
-rd2d y x1 x2 assignment, b(`bpoints') fuzzy(fuzzy) masspoints(off)
+* Location-based fuzzy estimation with covariate adjustment.
+rd2d y x1 x2 assignment, b(`bpoints') fuzzy(fuzzy) covseff(z1 z2) fitmethod(joint) masspoints(off)
 
-* Distance-based bandwidth selection.
-rdbw2d_dist y dist1-dist`neval', b(`bpoints') masspoints(off)
+* Distance-based bandwidth selection with covariate adjustment.
+rdbw2d_dist y dist1-dist`neval', b(`bpoints') covseff(z1 z2) fitmethod(joint) masspoints(off)
 
-* Distance-based sharp estimation.
-rd2d_dist y dist1-dist`neval', b(`bpoints') masspoints(off)
+* Distance-based sharp estimation with covariate adjustment.
+rd2d_dist y dist1-dist`neval', b(`bpoints') covseff(z1 z2) fitmethod(joint) masspoints(off)
 
-* Distance-based fuzzy bandwidth selection.
-rdbw2d_dist y dist1-dist`neval', b(`bpoints') fuzzy(fuzzy) bwparam(itt) masspoints(off)
+* Distance-based fuzzy bandwidth selection with covariate adjustment.
+rdbw2d_dist y dist1-dist`neval', b(`bpoints') fuzzy(fuzzy) covseff(z1 z2) fitmethod(joint) bwparam(itt) masspoints(off)
 
-* Distance-based fuzzy estimation.
-rd2d_dist y dist1-dist`neval', b(`bpoints') fuzzy(fuzzy) bwparam(itt) masspoints(off)
+* Distance-based fuzzy estimation with covariate adjustment.
+rd2d_dist y dist1-dist`neval', b(`bpoints') fuzzy(fuzzy) covseff(z1 z2) fitmethod(joint) bwparam(itt) masspoints(off)

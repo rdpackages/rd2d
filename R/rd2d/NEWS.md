@@ -1,5 +1,28 @@
-# rd2d 0.2.0
+# rd2d 1.0.0
 
+- Adds `fitmethod = c("joint", "separate")` to `rd2d()`, `rdbw2d()`,
+  `rd2d.distance()`, and `rdbw2d.distance()`. The new default
+  `fitmethod = "joint"` preserves legacy point estimates while using joint
+  variance corrections, including joint HC1 degrees-of-freedom factors and
+  cluster-robust covariance calculations that account for clusters observed on
+  both treatment sides. `fitmethod = "separate"` retains the previous
+  side-specific variance calculation. Bandwidth selection keeps the existing
+  plug-in bias estimator and now applies the same joint/separate convention to
+  the selector's variance constants.
+- Adds `covs.eff` to `rd2d()`, `rdbw2d()`, `rd2d.distance()`, and
+  `rdbw2d.distance()` for efficiency adjustment using pre-intervention
+  covariates with a common covariate coefficient across treatment sides,
+  including sharp, fuzzy, joint, separate, fixed-bandwidth, and
+  automatic-bandwidth paths.
+- Adds `covs.drop` and `covs.tol` safeguards for rank-deficient
+  `covs.eff`. Redundant covariate columns are dropped by default after
+  residualizing on the local polynomial basis, with diagnostics stored in
+  `opt`.
+- Adds S3 methods requested for the JSS resubmission: `plot()` for estimation
+  and bandwidth-selection objects, plus `coef()`, `vcov()`, and `confint()` for
+  `rd2d()` and `rd2d.distance()` estimation objects.
+- Improves exported R argument validation so invalid inputs raise informative
+  errors directly rather than printing a message followed by an empty error.
 - Adds fuzzy boundary RD support for both location-based and distance-based methods, including fuzzy main effects, ITT, first-stage, and optional one-sided outputs.
 - Adds `params.other` and `params.cov` controls to `rd2d()` for optional companion tables and covariance storage.
 - Moves the Gaussian simulation count `repp` from `rd2d()` and `rd2d.distance()` to the summary methods that use it for uniform confidence bands and LBATE critical values.

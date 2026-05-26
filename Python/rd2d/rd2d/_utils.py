@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
 from typing import Iterable
 
 import numpy as np
 import pandas as pd
-from scipy import stats
+from scipy import linalg, stats
 
 
 def as_1d(x, name: str) -> np.ndarray:
@@ -49,6 +50,135 @@ def complete_cases(*arrays: np.ndarray) -> np.ndarray:
         else:
             mask &= np.all(finite, axis=1)
     return mask
+
+
+def prepare_covs_eff(covs_eff, n: int) -> tuple[np.ndarray | None, list[str]]:
+    if covs_eff is None:
+        return None, []
+    if isinstance(covs_eff, pd.DataFrame):
+        names = [str(col) for col in covs_eff.columns]
+        arr = covs_eff.to_numpy(dtype=float)
+    else:
+        arr = np.asarray(covs_eff, dtype=float)
+        if arr.ndim == 1:
+            arr = arr.reshape(-1, 1)
+        if arr.ndim != 2:
+            raise ValueError("covs_eff must be None, a numeric vector, matrix, or data frame.")
+        names = [f"z.{j + 1}" for j in range(arr.shape[1])]
+    if arr.shape[0] != n:
+        raise ValueError("covs_eff must have the same number of observations as Y.")
+    if arr.shape[1] < 1:
+        raise ValueError("covs_eff must contain at least one covariate column.")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("covs_eff must contain finite numeric covariates.")
+    return arr, names
+
+
+def validate_fitmethod(fitmethod: str) -> str:
+    fitmethod = str(fitmethod).lower()
+    if fitmethod not in {"joint", "separate"}:
+        raise ValueError("fitmethod must be 'joint' or 'separate'.")
+    return fitmethod
+
+
+def validate_covs_rank_options(covs_drop: bool, covs_tol: float) -> tuple[bool, float]:
+    if not isinstance(covs_drop, (bool, np.bool_)):
+        raise ValueError("covs_drop must be True or False.")
+    covs_tol = float(covs_tol)
+    if not np.isfinite(covs_tol) or covs_tol <= 0:
+        raise ValueError("covs_tol must be a positive finite numeric value.")
+    return bool(covs_drop), covs_tol
+
+
+@dataclass
+class CovariateRankInfo:
+    supplied: int
+    used: int
+    redundant: list[str]
+    dropped: list[str]
+    rank_deficient: bool
+    drop: bool
+    tol: float
+
+
+class CovariateRankTracker:
+    def __init__(self, names: list[str], covs_drop: bool, covs_tol: float) -> None:
+        self.names = list(names)
+        self.supplied = len(names)
+        self.used = len(names)
+        self.redundant: list[str] = []
+        self.dropped: list[str] = []
+        self.rank_deficient = False
+        self.covs_drop = bool(covs_drop)
+        self.covs_tol = float(covs_tol)
+        self._warned = False
+
+    def update(self, keep: np.ndarray) -> None:
+        keep_set = set(int(i) for i in keep)
+        dropped = [name for i, name in enumerate(self.names) if i not in keep_set]
+        self.rank_deficient = True
+        self.used = min(self.used, len(keep_set))
+        for name in dropped:
+            if name not in self.redundant:
+                self.redundant.append(name)
+            if self.covs_drop and name not in self.dropped:
+                self.dropped.append(name)
+        if not self._warned:
+            action = "dropping redundant covariate columns" if self.covs_drop else "using a generalized inverse"
+            warnings.warn(
+                "covs_eff is rank deficient after residualizing on the local polynomial basis; "
+                f"{action} for numerical stability.",
+                RuntimeWarning,
+                stacklevel=3,
+            )
+            self._warned = True
+
+    def summary(self) -> CovariateRankInfo:
+        return CovariateRankInfo(
+            supplied=self.supplied,
+            used=self.used,
+            redundant=list(self.redundant),
+            dropped=list(self.dropped),
+            rank_deficient=self.rank_deficient,
+            drop=self.covs_drop,
+            tol=self.covs_tol,
+        )
+
+
+def solve_covariate_gamma(
+    zwz: np.ndarray,
+    zwy: np.ndarray,
+    names: list[str],
+    tracker: CovariateRankTracker | None,
+    covs_drop: bool,
+    covs_tol: float,
+) -> tuple[np.ndarray, int]:
+    zwz = np.asarray(zwz, dtype=float)
+    zwy = np.asarray(zwy, dtype=float)
+    p = zwz.shape[0]
+    if p == 0:
+        return np.empty((0, zwy.shape[1])), 0
+    _, r, piv = linalg.qr(zwz, mode="economic", pivoting=True)
+    diag = np.abs(np.diag(r))
+    threshold = covs_tol * max(1.0, diag[0] if diag.size else 0.0)
+    rank = int(np.sum(diag > threshold))
+    keep = np.asarray(piv[:rank], dtype=int)
+
+    if rank < p:
+        if tracker is not None:
+            tracker.update(keep)
+        gamma = np.zeros((p, zwy.shape[1]), dtype=float)
+        if covs_drop and rank > 0:
+            gamma_keep = np.linalg.pinv(zwz[np.ix_(keep, keep)], rcond=1e-20) @ zwy[keep, :]
+            gamma[keep, :] = gamma_keep
+        elif not covs_drop:
+            gamma = np.linalg.pinv(zwz, rcond=1e-20) @ zwy
+    else:
+        try:
+            gamma = np.linalg.solve(zwz, zwy)
+        except np.linalg.LinAlgError:
+            gamma = np.linalg.pinv(zwz, rcond=1e-20) @ zwy
+    return np.asarray(gamma, dtype=float), rank
 
 
 def normalize_binary(x, name: str) -> np.ndarray:
@@ -166,6 +296,7 @@ def local_fit_targets(
     *,
     vce: str = "hc1",
     cluster: np.ndarray | None = None,
+    scale_override: float | None = None,
 ) -> LocalFit:
     outcomes_full = np.asarray(outcomes_full, dtype=float)
     if outcomes_full.ndim == 1:
@@ -194,7 +325,9 @@ def local_fit_targets(
     infl_kept = score_base[:, None] * resid * np.sqrt(adj)[:, None]
 
     scale = 1.0
-    if vce == "hc1" and n_eff > k:
+    if scale_override is not None:
+        scale = float(scale_override)
+    elif vce == "hc1" and n_eff > k:
         scale = n_eff / (n_eff - k)
 
     if cluster is not None:
@@ -203,7 +336,7 @@ def local_fit_targets(
         summed = np.zeros((len(groups), outcomes_full.shape[1]))
         for i, group in enumerate(groups):
             summed[i, :] = np.sum(infl_kept[cluster_kept == group, :], axis=0)
-        if vce == "hc1" and len(groups) > 1 and n_eff > k:
+        if scale_override is None and vce == "hc1" and len(groups) > 1 and n_eff > k:
             scale = (len(groups) / (len(groups) - 1.0)) * ((n_eff - 1.0) / (n_eff - k))
         cov = scale * (summed.T @ summed)
         infl_source = summed

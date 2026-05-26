@@ -20,6 +20,10 @@ rdbw2d.distance(
   bwcheck = 20 + p + 1,
   masspoints = c("check", "adjust", "off"),
   cluster = NULL,
+  covs.eff = NULL,
+  covs.drop = TRUE,
+  covs.tol = 1e-12,
+  fitmethod = c("joint", "separate"),
   scaleregul = 1,
   cqt = 0.5,
   fuzzy = NULL
@@ -96,6 +100,25 @@ Options:
 
 \item{cluster}{Cluster ID variable used for cluster-robust variance estimation with degrees-of-freedom weights. Default is \code{cluster = NULL}.}
 
+\item{covs.eff}{Optional pre-intervention covariates used for efficiency
+adjustment. Must be a numeric vector, matrix, or data frame with the same
+number of rows as \code{Y}. Covariate coefficients are constrained to be
+common across treatment sides.}
+
+\item{covs.drop}{Logical. If \code{TRUE} (default), redundant covariate
+columns are dropped from the common covariate-adjustment solve when the
+residualized covariate matrix is rank deficient. If \code{FALSE}, a
+generalized inverse is used instead.}
+
+\item{covs.tol}{Positive numeric tolerance used to detect rank deficiency
+in residualized \code{covs.eff}. Default is \code{1e-12}.}
+
+\item{fitmethod}{Estimation method used for the variance constants entering
+bandwidth selection. \code{"joint"} (default) uses treatment-side interacted
+local polynomial fits with joint variance corrections, matching the default
+in \code{\link{rd2d.distance}}. \code{"separate"} uses the legacy
+side-specific variance calculations.}
+
 \item{scaleregul}{Scaling factor for the regularization term in bandwidth selection. Default is \code{1}.}
 
 \item{cqt}{Constant controlling subsample fraction for initial bias estimation. Default is \code{0.5}.}
@@ -115,7 +138,11 @@ An object of class \code{"rdbw2d.distance"}, containing:
 \item{\code{h1}}{Bandwidth for observations with non-negative signed distance.}
 }
 }
-\item{\code{mseconsts}}{Data frame of intermediate bias and variance constants used for MSE/IMSE calculations, including \code{N.Co} and \code{N.Tr}, the effective sample sizes for observations with negative and non-negative signed distances, respectively.}
+\item{\code{mseconsts}}{Data frame of intermediate bias and variance
+constants used for MSE/IMSE calculations, including \code{v.01}, the
+cross-side covariance constant used by joint clustered bandwidths, and
+\code{N.Co} and \code{N.Tr}, the effective sample sizes for observations
+with negative and non-negative signed distances, respectively.}
 \item{\code{opt}}{A list of options and settings used in estimation, including \code{p}, \code{kernel}, sample size \eqn{N}, and user-specified choices.}
 \item{\code{call}}{Matched function call.}
 }

@@ -1,4 +1,4 @@
-# rd2d 0.2.0 CRAN comments
+# rd2d 1.0.0 CRAN comments
 
 ## Test environments
 

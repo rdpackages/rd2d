@@ -64,6 +64,21 @@
 #'   \item{\code{"off"}}{Ignore mass points completely.}
 #' }
 #' @param cluster Cluster ID variable used for cluster-robust variance estimation with degrees-of-freedom weights. Default is \code{cluster = NULL}.
+#' @param covs.eff Optional pre-intervention covariates used for efficiency
+#' adjustment. Must be a numeric vector, matrix, or data frame with the same
+#' number of rows as \code{Y}. Covariate coefficients are constrained to be
+#' common across treatment sides.
+#' @param covs.drop Logical. If \code{TRUE} (default), redundant covariate
+#' columns are dropped from the common covariate-adjustment solve when the
+#' residualized covariate matrix is rank deficient. If \code{FALSE}, a
+#' generalized inverse is used instead.
+#' @param covs.tol Positive numeric tolerance used to detect rank deficiency
+#' in residualized \code{covs.eff}. Default is \code{1e-12}.
+#' @param fitmethod Estimation method used for the variance constants entering
+#' bandwidth selection. \code{"joint"} (default) uses treatment-side interacted
+#' local polynomial fits with joint variance corrections, matching the default
+#' in \code{\link{rd2d.distance}}. \code{"separate"} uses the legacy
+#' side-specific variance calculations.
 #' @param scaleregul Scaling factor for the regularization term in bandwidth selection. Default is \code{1}.
 #' @param cqt Constant controlling subsample fraction for initial bias estimation. Default is \code{0.5}.
 #' @param fuzzy Optional treatment receipt/status variable used for fuzzy RD
@@ -80,7 +95,11 @@
 #'       \item{\code{h1}}{Bandwidth for observations with non-negative signed distance.}
 #'     }
 #'   }
-#'   \item{\code{mseconsts}}{Data frame of intermediate bias and variance constants used for MSE/IMSE calculations, including \code{N.Co} and \code{N.Tr}, the effective sample sizes for observations with negative and non-negative signed distances, respectively.}
+#'   \item{\code{mseconsts}}{Data frame of intermediate bias and variance
+#'   constants used for MSE/IMSE calculations, including \code{v.01}, the
+#'   cross-side covariance constant used by joint clustered bandwidths, and
+#'   \code{N.Co} and \code{N.Tr}, the effective sample sizes for observations
+#'   with negative and non-negative signed distances, respectively.}
 #'   \item{\code{opt}}{A list of options and settings used in estimation, including \code{p}, \code{kernel}, sample size \eqn{N}, and user-specified choices.}
 #'   \item{\code{call}}{Matched function call.}
 #' }
@@ -159,7 +178,10 @@ rdbw2d.distance <- function(Y, distance, b = NULL, p = 1,
                    bwparam = c("main", "itt"),
                    vce = c("hc1","hc0","hc2","hc3"),
                    bwcheck = 20 + p + 1, masspoints = c("check","adjust","off"),
-                   cluster = NULL, scaleregul = 1, cqt = 0.5, fuzzy = NULL){
+                   cluster = NULL, covs.eff = NULL,
+                   covs.drop = TRUE, covs.tol = 1e-12,
+                   fitmethod = c("joint", "separate"),
+                   scaleregul = 1, cqt = 0.5, fuzzy = NULL){
 
   # Input error handling
 
@@ -170,6 +192,7 @@ rdbw2d.distance <- function(Y, distance, b = NULL, p = 1,
   kernel <- match.arg(kernel)
   vce <- match.arg(vce)
   masspoints <- match.arg(masspoints)
+  fitmethod <- match.arg(fitmethod)
   kink.unknown <- rd2d_validate_kink_unknown(kink.unknown)
   bwparam <- match.arg(bwparam)
   rot <- NULL
@@ -179,32 +202,53 @@ rdbw2d.distance <- function(Y, distance, b = NULL, p = 1,
 
   # Check Errors
 
-  exit=0
+  exit <- 0
+  errors <- character(0)
+  rd2d_add_error <- function(message) {
+    errors <<- c(errors, paste(message, collapse = " "))
+    exit <<- 1
+    invisible(NULL)
+  }
 
-  if (length(Y) != nrow(distance_mat)) {
-    print("Y and rows of distance must have the same length")
-    exit <- 1
+  valid.distance <- is.matrix(distance_mat) || is.data.frame(distance_mat)
+  if (!valid.distance) {
+    rd2d_add_error("distance must be a matrix or data frame")
+  } else if (length(Y) != nrow(distance_mat)) {
+    rd2d_add_error("Y and rows of distance must have the same length")
   }
 
   if (is.fuzzy && length(fuzzy) != length(Y)) {
-    print("fuzzy must have the same length as Y")
-    exit <- 1
+    rd2d_add_error("fuzzy must have the same length as Y")
   }
 
   if (is.fuzzy && !(is.logical(fuzzy) || is.numeric(fuzzy))) {
-    print("fuzzy must be a logical or numeric vector")
-    exit <- 1
+    rd2d_add_error("fuzzy must be a logical or numeric vector")
+  }
+
+  if (!is.null(cluster) && length(cluster) != length(Y)) {
+    rd2d_add_error("cluster must have the same length as Y")
+  }
+
+  cov.prep <- tryCatch(
+    rd2d_prepare_cov_eff(covs.eff, length(Y)),
+    error = function(e) {
+      rd2d_add_error(conditionMessage(e))
+      list(matrix = NULL, names = NULL)
+    }
+  )
+  rank.option.errors <- rd2d_validate_covs_rank_options(covs.drop, covs.tol)
+  if (length(rank.option.errors) > 0) {
+    for (err in rank.option.errors) rd2d_add_error(err)
   }
 
   if (kernel!="gau" & kernel!="gaussian" & kernel!="uni" & kernel!="uniform" & kernel!="tri" & kernel!="triangular" & kernel!="epa" & kernel!="epanechnikov" & kernel!="" ){
-    print("kernel incorrectly specified")
-    exit <- 1
+    rd2d_add_error("kernel incorrectly specified")
   }
 
   if (!is.null(b)){
-    if (nrow(b) != ncol(distance_mat) || ncol(b) != 2){
-      print("b must have 2 columns and the same number of rows as distance's number of columns")
-      exit <- 1
+    if (!(is.matrix(b) || is.data.frame(b)) ||
+        !valid.distance || nrow(b) != ncol(distance_mat) || ncol(b) != 2){
+      rd2d_add_error("b must have 2 columns and the same number of rows as distance's number of columns")
     }
   }
 
@@ -213,8 +257,7 @@ rdbw2d.distance <- function(Y, distance, b = NULL, p = 1,
     is.finite(p) && p >= 0 &&
     abs(p - round(p)) < sqrt(.Machine$double.eps)
   if (!valid.p) {
-    print("p must be a nonnegative integer")
-    exit <- 1
+    rd2d_add_error("p must be a nonnegative integer")
   } else {
     p <- as.integer(round(p))
   }
@@ -224,7 +267,7 @@ rdbw2d.distance <- function(Y, distance, b = NULL, p = 1,
     vce <- "hc1"
   }
 
-  if (exit>0) stop()
+  if (exit>0) rd2d_stop_errors(errors)
 
   # Data Cleaning
 
@@ -245,15 +288,19 @@ rdbw2d.distance <- function(Y, distance, b = NULL, p = 1,
 
   na.ok <- complete.cases(distance_mat) & complete.cases(Y)
   if (is.fuzzy) na.ok <- na.ok & complete.cases(fuzzy)
+  if (!is.null(cov.prep$matrix)) na.ok <- na.ok & complete.cases(cov.prep$matrix)
   distance_mat <- distance_mat[na.ok,,drop = FALSE]
   Y <- Y[na.ok]
   if (is.fuzzy) fuzzy <- as.numeric(fuzzy[na.ok])
   cluster <- cluster[na.ok]
+  covs.mat <- if (!is.null(cov.prep$matrix)) cov.prep$matrix[na.ok,,drop = FALSE] else NULL
   d <- (distance_mat[,1] >= 0)
 
   N <- length(Y)
   N.1 <- sum(d)
   N.0 <- N - N.1
+  rd2d_covs_rank_begin(colnames(covs.mat), covs.drop, covs.tol)
+  on.exit(rd2d_covs_rank_end(), add = TRUE)
 
   kernel   <- tolower(kernel)
 
@@ -299,11 +346,13 @@ rdbw2d.distance <- function(Y, distance, b = NULL, p = 1,
   results <- rdbw2d_distance_bw(
     Y = Y, distance = distance_mat, p = p, kernel = kernel, target.vec = e_level, rot = rot,
     vce = vce, cluster = cluster, bwcheck = bwcheck, scaleregul = scaleregul,
-    cqt = cqt, fuzzy = if (is.fuzzy) fuzzy else NULL, bwparam = bwparam
+    cqt = cqt, fuzzy = if (is.fuzzy) fuzzy else NULL, bwparam = bwparam,
+    fitmethod = fitmethod, covs.eff = covs.mat
   )
 
   if (bwselect.base == "mserd"){
-    hn.grid <- ( 2 * (results$v.0   + results$v.1) /
+    V.diff <- results$v.0 + results$v.1 - 2 * results$v.01
+    hn.grid <- ( 2 * V.diff /
               ( (2 * p + 2) * ( (results$b.0 - results$b.1)^2 +
               scaleregul * results$r.0 + scaleregul * results$r.1) ) )^(1/(2 * p + 4))
     if (!is.null(bwcheck)) { # Bandwidth restrictions
@@ -330,7 +379,7 @@ rdbw2d.distance <- function(Y, distance, b = NULL, p = 1,
   }
 
   if (bwselect.base == "imserd"){
-    V.V <- mean(results$v.0) + mean(results$v.1)
+    V.V <- mean(results$v.0 + results$v.1 - 2 * results$v.01)
     B.B <- mean( (results$b.0 - results$b.1)^2 + scaleregul * results$r.0 + scaleregul * results$r.1)
     hIMSE <- (2 * V.V / ( (2 * p + 2)* B.B ) )^(1/(2 * p + 4))
     hn.grid <- rep(hIMSE, nrow(results))
@@ -413,6 +462,7 @@ rdbw2d.distance <- function(Y, distance, b = NULL, p = 1,
 
   clustered <- !is.null(cluster)
 
+  covs.rank <- rd2d_covs_rank_summary()
   out        <- list(bws = bws, mseconsts = results,
                      opt = list(N=N, N.0 = N.0, N.1 = N.1, M = M.vec, M.0 = M.0.vec,
                                 M.1 = M.1.vec, neval=neval, p=p, b = eval,
@@ -422,6 +472,15 @@ rdbw2d.distance <- function(Y, distance, b = NULL, p = 1,
                                 bwselect=bwselect, bwparam = bwparam,
                                 bwcheck = bwcheck,
                                 cluster= cluster, clustered = clustered,
+                                covs.eff = !is.null(covs.mat),
+                                N.covs.eff = if (!is.null(covs.mat)) ncol(covs.mat) else 0,
+                                N.covs.used = covs.rank$used,
+                                covs.dropped = covs.rank$dropped,
+                                covs.redundant = covs.rank$redundant,
+                                covs.rank.deficient = covs.rank$rank.deficient,
+                                covs.drop = covs.drop,
+                                covs.tol = covs.tol,
+                                fitmethod = fitmethod,
                                 fuzzy = is.fuzzy,
                                 vce = vce, masspoints = masspoints,
                                 scaleregul = scaleregul, cqt = cqt))
@@ -464,7 +523,9 @@ print.rdbw2d.distance <- function(x,...){
     cat(sprintf("Known kink positions   %s\n", paste(which(x$opt$kink.position), collapse = ", ")))
   }
   cat(sprintf("VCE method             %s\n", paste(x$opt$vce, ifelse(x$opt$clustered, "-clustered", ""),sep = "")))
+  cat(sprintf("Fit method             %s\n", x$opt$fitmethod))
   cat(sprintf("Masspoints             %s\n", x$opt$masspoints))
+  rd2d_print_covs_eff(x$opt)
   if (isTRUE(x$opt$fuzzy)) {
     cat(sprintf("Fuzzy                  on\n"))
     cat(sprintf("BW target              %s\n", x$opt$bwparam))
@@ -534,7 +595,9 @@ summary.rdbw2d.distance <- function(object,...) {
     cat(sprintf("Known kink positions   %s\n", paste(which(x$opt$kink.position), collapse = ", ")))
   }
   cat(sprintf("VCE method             %s\n", paste(x$opt$vce, ifelse(x$opt$clustered, "-clustered", ""),sep = "")))
+  cat(sprintf("Fit method             %s\n", x$opt$fitmethod))
   cat(sprintf("Masspoints             %s\n", x$opt$masspoints))
+  rd2d_print_covs_eff(x$opt)
   if (isTRUE(x$opt$fuzzy)) {
     cat(sprintf("Fuzzy                  on\n"))
     cat(sprintf("BW target              %s\n", x$opt$bwparam))

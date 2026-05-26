@@ -1,5 +1,5 @@
 {smcl}
-{* *!version 0.2.0  2026-05-23}{...}
+{* *!version 1.0.0  2026-05-26}{...}
 {viewerjumpto "Syntax" "rdbw2d##syntax"}{...}
 {viewerjumpto "Description" "rdbw2d##description"}{...}
 {viewerjumpto "Options" "rdbw2d##options"}{...}
@@ -25,6 +25,8 @@
 {cmd:bwparam(}{it:target}{cmd:)}
 {cmd:method(}{it:method}{cmd:)}
 {cmd:vce(}{it:vcetype}{cmd:)}
+{cmd:fitmethod(}{it:method}{cmd:)}
+{cmd:covseff(}{it:varlist}{cmd:)}
 {cmd:bwcheck(}{it:#}{cmd:)}
 {cmd:masspoints(}{it:masspointsoption}{cmd:)}
 {cmd:cluster(}{it:clustvar}{cmd:)}
@@ -80,6 +82,10 @@
 
 {p 4 8}{cmd:vce()} specifies the variance-covariance estimator used in the bandwidth calculations. Available choices are {cmd:hc0}, {cmd:hc1}, {cmd:hc2}, and {cmd:hc3}. Default is {cmd:hc1}.{p_end}
 
+{p 4 8}{cmd:fitmethod()} specifies the fitting convention used for variance constants in bandwidth selection. The default, {cmd:fitmethod(joint)}, uses the joint treatment-interacted regression convention. {cmd:fitmethod(separate)} uses the legacy two-sample side-specific convention.{p_end}
+
+{p 4 8}{cmd:covseff(}{it:varlist}{cmd:)} specifies pre-intervention covariates used for efficiency adjustment in bandwidth selection. Covariates enter with common coefficients across treatment sides after residualizing on the side-specific local polynomial bases.{p_end}
+
 {p 4 8}{cmd:bwcheck()} enlarges preliminary bandwidths, when needed, so that at least the requested number of unique observations are included in each side-specific window. Default is {cmd:bwcheck(20)}.{p_end}
 
 {p 4 8}{cmd:masspoints()} specifies how repeated running-variable values are handled. Available choices are:{p_end}
@@ -107,8 +113,10 @@
 {p 8 8}{cmd:. generate double d = x1 >= 0}{p_end}
 {p 8 8}{cmd:. generate double y = 3 + 2*x1 + 1.5*x2 + d + rnormal()}{p_end}
 {p 8 8}{cmd:. rdbw2d y x1 x2 d, b(0 0 0 1)}{p_end}
+{p 8 8}{cmd:. generate double z = x1 + x2 + rnormal()}{p_end}
+{p 8 8}{cmd:. rdbw2d y x1 x2 d, b(0 0 0 1) covseff(z) fitmethod(joint)}{p_end}
 
 {marker stored_results}{...}
 {title:Stored results}
 
-{p 4 8}{cmd:rdbw2d} stores {cmd:e(bws)}, {cmd:e(N)}, {cmd:e(p)}, and option labels in {cmd:e()}.{p_end}
+{p 4 8}{cmd:rdbw2d} stores {cmd:e(bws)}, {cmd:e(N)}, {cmd:e(p)}, and option labels in {cmd:e()}, including {cmd:e(fitmethod)} and {cmd:e(covseff)} when supplied.{p_end}

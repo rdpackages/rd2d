@@ -10,6 +10,14 @@ test_that("main user-facing functions are exported", {
   expect_true("fuzzy" %in% names(formals(rdbw2d)))
   expect_true("cluster" %in% names(formals(rd2d)))
   expect_true("cluster" %in% names(formals(rdbw2d)))
+  expect_true("covs.eff" %in% names(formals(rd2d)))
+  expect_true("covs.eff" %in% names(formals(rdbw2d)))
+  expect_true("covs.drop" %in% names(formals(rd2d)))
+  expect_true("covs.drop" %in% names(formals(rdbw2d)))
+  expect_true("covs.tol" %in% names(formals(rd2d)))
+  expect_true("covs.tol" %in% names(formals(rdbw2d)))
+  expect_true("fitmethod" %in% names(formals(rd2d)))
+  expect_true("fitmethod" %in% names(formals(rdbw2d)))
   expect_false("t" %in% names(formals(rd2d)))
   expect_false("t" %in% names(formals(rdbw2d)))
   expect_false("W" %in% names(formals(rd2d)))
@@ -51,6 +59,27 @@ test_that("sharp rd2d returns pointwise tables without covariance by default", {
   )
   expect_false(any(c("cb.lower", "cb.upper") %in% names(fit$main)))
   expect_equal(length(fit$params.cov), 0)
+})
+
+test_that("location S3 methods expose estimates, covariance, intervals, and plots", {
+  dat <- make_location_data()
+  fit <- rd2d(
+    dat$y, dat$x, dat$z, dat$b, h = 0.9, masspoints = "off",
+    params.cov = "main"
+  )
+  bw <- rdbw2d(dat$y, dat$x, dat$z, dat$b, masspoints = "off")
+
+  expect_equal(unname(coef(fit)), fit$main$estimate.q)
+  expect_equal(vcov(fit), fit$params.cov$main)
+  expect_equal(
+    confint(fit, level = 0.95),
+    as.matrix(fit$main[, c("ci.lower", "ci.upper")]),
+    tolerance = 1e-10,
+    ignore_attr = TRUE
+  )
+  expect_error(vcov(rd2d(dat$y, dat$x, dat$z, dat$b, h = 0.9, masspoints = "off")), "params.cov")
+  expect_s3_class(plot(fit, draw = FALSE), "ggplot")
+  expect_s3_class(plot(bw, draw = FALSE), "ggplot")
 })
 
 test_that("params.cov stores only requested sharp covariance matrices", {
@@ -221,7 +250,8 @@ test_that("combined clustered fuzzy covariance matches component calculations", 
     dat$y.fuzzy, dat$x, dat$z, dat$b, h = 0.9, cluster = cluster, vce = "hc1",
     masspoints = "off", fuzzy = dat$fuzzy,
     params.other = c("itt.0", "itt.1", "fs.0", "fs.1"),
-    params.cov = c("main", "itt", "fs", "itt.0", "itt.1", "fs.0", "fs.1")
+    params.cov = c("main", "itt", "fs", "itt.0", "itt.1", "fs.0", "fs.1"),
+    fitmethod = "separate"
   ))
 
   q <- fit$opt$q
@@ -461,23 +491,38 @@ test_that("second-order derivative estimates include multi-index factorials", {
 test_that("deriv must be a nonnegative integer multi-index", {
   dat <- make_location_data()
 
-  expect_output(
-    expect_error(
-      rd2d(
-        dat$y, dat$x, dat$z, dat$b, h = 0.9, deriv = c(0.5, 0),
-        masspoints = "off"
-      )
+  expect_error(
+    rd2d(
+      dat$y, dat$x, dat$z, dat$b, h = 0.9, deriv = c(0.5, 0),
+      masspoints = "off"
     ),
     "nonnegative integer"
   )
-  expect_output(
-    expect_error(
-      rdbw2d(
-        dat$y, dat$x, dat$z, dat$b, p = 2, deriv = c(1, -1),
-        masspoints = "off"
-      )
+  expect_error(
+    rdbw2d(
+      dat$y, dat$x, dat$z, dat$b, p = 2, deriv = c(1, -1),
+      masspoints = "off"
     ),
     "nonnegative integer"
+  )
+})
+
+test_that("covariate rank options are validated", {
+  dat <- make_location_data()
+
+  expect_error(
+    rd2d(
+      dat$y, dat$x, dat$z, dat$b, h = 0.9, covs.eff = dat$x[, 1],
+      covs.drop = NA, masspoints = "off"
+    ),
+    "covs.drop must be TRUE or FALSE"
+  )
+  expect_error(
+    rdbw2d(
+      dat$y, dat$x, dat$z, dat$b, covs.eff = dat$x[, 1],
+      covs.tol = 0, masspoints = "off"
+    ),
+    "covs.tol must be a positive finite numeric value"
   )
 })
 
@@ -518,30 +563,24 @@ test_that("rdbw2d standardizes by default", {
 test_that("polynomial orders must be nonnegative integers", {
   dat <- make_location_data()
 
-  expect_output(
-    expect_error(
-      rd2d(
-        dat$y, dat$x, dat$z, dat$b, h = 0.9, p = 1.5,
-        masspoints = "off"
-      )
+  expect_error(
+    rd2d(
+      dat$y, dat$x, dat$z, dat$b, h = 0.9, p = 1.5,
+      masspoints = "off"
     ),
     "p must be a nonnegative integer"
   )
-  expect_output(
-    expect_error(
-      rd2d(
-        dat$y, dat$x, dat$z, dat$b, h = 0.9, q = 1.5,
-        masspoints = "off"
-      )
+  expect_error(
+    rd2d(
+      dat$y, dat$x, dat$z, dat$b, h = 0.9, q = 1.5,
+      masspoints = "off"
     ),
     "q must be a nonnegative integer"
   )
-  expect_output(
-    expect_error(
-      rdbw2d(
-        dat$y, dat$x, dat$z, dat$b, p = 1.5,
-        masspoints = "off"
-      )
+  expect_error(
+    rdbw2d(
+      dat$y, dat$x, dat$z, dat$b, p = 1.5,
+      masspoints = "off"
     ),
     "p must be a nonnegative integer"
   )

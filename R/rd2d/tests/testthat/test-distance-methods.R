@@ -7,7 +7,14 @@ make_distance_data <- function(n = 500, seed = 20260509) {
     runif(n) < ifelse(d == 1, 0.8 + 0.05 * x, 0.2 + 0.05 * x)
   )
   y.fuzzy <- 1 + 2 * x + 1.5 * fuzzy + rnorm(n, sd = 0.25)
-  list(y = y, y.fuzzy = y.fuzzy, distance = matrix(x, ncol = 1), x = x, fuzzy = fuzzy)
+  cov <- cbind(
+    cov1 = 0.6 * x + rnorm(n, sd = 0.2),
+    cov2 = x^2 + rnorm(n, sd = 0.2)
+  )
+  list(
+    y = y, y.fuzzy = y.fuzzy, distance = matrix(x, ncol = 1),
+    x = x, fuzzy = fuzzy, cov = cov
+  )
 }
 
 manual_dist_se <- function(y, x, h, p, side, kernel = "tri") {
@@ -45,6 +52,14 @@ test_that("distance bandwidth polynomial helper matches lm", {
 test_that("distance public API uses distance argument", {
   expect_true("distance" %in% names(formals(rd2d.distance)))
   expect_true("distance" %in% names(formals(rdbw2d.distance)))
+  expect_true("fitmethod" %in% names(formals(rd2d.distance)))
+  expect_true("fitmethod" %in% names(formals(rdbw2d.distance)))
+  expect_true("covs.eff" %in% names(formals(rd2d.distance)))
+  expect_true("covs.eff" %in% names(formals(rdbw2d.distance)))
+  expect_true("covs.drop" %in% names(formals(rd2d.distance)))
+  expect_true("covs.drop" %in% names(formals(rdbw2d.distance)))
+  expect_true("covs.tol" %in% names(formals(rd2d.distance)))
+  expect_true("covs.tol" %in% names(formals(rdbw2d.distance)))
   expect_true("kink.unknown" %in% names(formals(rd2d.distance)))
   expect_true("kink.unknown" %in% names(formals(rdbw2d.distance)))
   expect_true("kink.position" %in% names(formals(rd2d.distance)))
@@ -55,6 +70,8 @@ test_that("distance public API uses distance argument", {
   expect_false("kink" %in% names(formals(rdbw2d.distance)))
   expect_false("kink.known" %in% names(formals(rd2d.distance)))
   expect_false("kink.known" %in% names(formals(rdbw2d.distance)))
+  expect_false("cov.eff" %in% names(formals(rd2d.distance)))
+  expect_false("cov.eff" %in% names(formals(rdbw2d.distance)))
   expect_false("rbc" %in% names(formals(rd2d.distance)))
 
   dat <- make_distance_data()
@@ -106,6 +123,37 @@ test_that("rd2d.distance returns location-style names", {
     "cov.q", "cov.us", "zvalues"
   ) %in% names(fit)))
   expect_false(any(c("cb.lower", "cb.upper") %in% names(fit$main)))
+})
+
+test_that("distance S3 methods expose estimates, covariance, intervals, and plots", {
+  dat <- make_distance_data()
+  fit <- rd2d.distance(
+    dat$y, dat$distance, h = 0.45, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, q = 1, cbands = TRUE, masspoints = "off",
+    bwcheck = NULL, params.cov = "main"
+  )
+  bw <- rdbw2d.distance(
+    dat$y, dat$distance, b = data.frame(x.1 = 0, x.2 = 0),
+    masspoints = "off", bwcheck = NULL
+  )
+
+  expect_equal(unname(coef(fit)), fit$main$estimate.q)
+  expect_equal(vcov(fit), fit$params.cov$main)
+  expect_equal(
+    confint(fit, level = 0.95),
+    as.matrix(fit$main[, c("ci.lower", "ci.upper")]),
+    tolerance = 1e-10,
+    ignore_attr = TRUE
+  )
+  expect_error(
+    vcov(rd2d.distance(
+      dat$y, dat$distance, h = 0.45, b = data.frame(x.1 = 0, x.2 = 0),
+      p = 1, q = 1, cbands = FALSE, masspoints = "off", bwcheck = NULL
+    )),
+    "params.cov"
+  )
+  expect_s3_class(plot(fit, draw = FALSE), "ggplot")
+  expect_s3_class(plot(bw, draw = FALSE), "ggplot")
 })
 
 test_that("rdbw2d.distance automatic bandwidths reproduce manual rd2d.distance", {
@@ -390,6 +438,313 @@ test_that("rd2d.distance clustered covariance diagonal matches standard errors",
   expect_equal(diag(fit$params.cov$main), fit$main$std.err.q^2, tolerance = 1e-10)
 })
 
+test_that("joint and separate distance fitmethods agree without clusters under HC0", {
+  dat <- make_distance_data(n = 550, seed = 20260614)
+  b <- data.frame(x.1 = 0, x.2 = 0)
+
+  joint <- rd2d.distance(
+    dat$y, dat$distance, h = 0.5, b = b, p = 1, q = 2,
+    cbands = TRUE, masspoints = "off", bwcheck = NULL,
+    kernel = "tri", vce = "hc0", fitmethod = "joint",
+    params.other = c("main.0", "main.1"),
+    params.cov = c("main", "main.0", "main.1")
+  )
+  separate <- rd2d.distance(
+    dat$y, dat$distance, h = 0.5, b = b, p = 1, q = 2,
+    cbands = TRUE, masspoints = "off", bwcheck = NULL,
+    kernel = "tri", vce = "hc0", fitmethod = "separate",
+    params.other = c("main.0", "main.1"),
+    params.cov = c("main", "main.0", "main.1")
+  )
+
+  expect_equal(joint$main, separate$main, tolerance = 1e-10, ignore_attr = TRUE)
+  expect_equal(joint$main.0, separate$main.0, tolerance = 1e-10, ignore_attr = TRUE)
+  expect_equal(joint$main.1, separate$main.1, tolerance = 1e-10, ignore_attr = TRUE)
+  expect_equal(joint$params.cov, separate$params.cov, tolerance = 1e-10)
+})
+
+test_that("joint clustered distance covariance uses cross-side cluster scores", {
+  dat <- make_distance_data(n = 650, seed = 20260615)
+  set.seed(20260615)
+  cluster <- sample(seq_len(70), length(dat$y), replace = TRUE)
+  cluster.effect <- rnorm(70, sd = 1.1)
+  dat$y <- dat$y + cluster.effect[cluster]
+  crosses.side <- tapply(dat$x >= 0, cluster, function(x) length(unique(x)) > 1)
+  expect_true(any(unlist(crosses.side)))
+
+  joint <- rd2d.distance(
+    dat$y, dat$distance, h = 0.55, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, q = 2, cbands = TRUE, masspoints = "off", bwcheck = NULL,
+    kernel = "tri", vce = "hc1", cluster = cluster, fitmethod = "joint",
+    params.cov = "main"
+  )
+  separate <- rd2d.distance(
+    dat$y, dat$distance, h = 0.55, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, q = 2, cbands = TRUE, masspoints = "off", bwcheck = NULL,
+    kernel = "tri", vce = "hc1", cluster = cluster, fitmethod = "separate",
+    params.cov = "main"
+  )
+
+  stable.cols <- c(
+    "b1", "b2", "estimate.p", "estimate.q", "h0", "h1",
+    "h0.rbc", "h1.rbc", "N.Co", "N.Tr"
+  )
+  expect_equal(
+    joint$main[, stable.cols],
+    separate$main[, stable.cols],
+    tolerance = 1e-10,
+    ignore_attr = TRUE
+  )
+  expect_false(isTRUE(all.equal(
+    joint$params.cov$main, separate$params.cov$main, tolerance = 1e-10
+  )))
+  expect_equal(
+    diag(joint$params.cov$main),
+    joint$main$std.err.q^2,
+    tolerance = 1e-10,
+    ignore_attr = TRUE
+  )
+})
+
+test_that("zero covs.eff leaves fixed-bandwidth distance HC0 results unchanged", {
+  dat <- make_distance_data(n = 550, seed = 20260616)
+  z0 <- matrix(0, nrow = length(dat$y), ncol = 1)
+
+  plain <- rd2d.distance(
+    dat$y, dat$distance, h = 0.5, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, q = 2, cbands = TRUE, masspoints = "off", bwcheck = NULL,
+    kernel = "tri", vce = "hc0", fitmethod = "joint",
+    params.other = c("main.0", "main.1"),
+    params.cov = c("main", "main.0", "main.1")
+  )
+  adjusted <- suppressWarnings(rd2d.distance(
+    dat$y, dat$distance, h = 0.5, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, q = 2, covs.eff = z0, cbands = TRUE, masspoints = "off",
+    bwcheck = NULL, kernel = "tri", vce = "hc0", fitmethod = "joint",
+    params.other = c("main.0", "main.1"),
+    params.cov = c("main", "main.0", "main.1")
+  ))
+
+  expect_equal(adjusted$main, plain$main, tolerance = 1e-10, ignore_attr = TRUE)
+  expect_equal(adjusted$main.0, plain$main.0, tolerance = 1e-10, ignore_attr = TRUE)
+  expect_equal(adjusted$main.1, plain$main.1, tolerance = 1e-10, ignore_attr = TRUE)
+  expect_equal(adjusted$params.cov, plain$params.cov, tolerance = 1e-10)
+  expect_true(adjusted$opt$covs.eff)
+  expect_equal(adjusted$opt$N.covs.eff, 1)
+})
+
+test_that("covs.eff changes covariate-predictive distance estimates", {
+  dat <- make_distance_data(n = 600, seed = 20260617)
+  y.cov <- dat$y + as.numeric(dat$cov %*% c(1.0, -0.8))
+
+  plain <- rd2d.distance(
+    y.cov, dat$distance, h = 0.5, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, q = 2, cbands = FALSE, masspoints = "off", bwcheck = NULL,
+    kernel = "tri", vce = "hc0", fitmethod = "joint"
+  )
+  adjusted <- rd2d.distance(
+    y.cov, dat$distance, h = 0.5, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, q = 2, covs.eff = dat$cov, cbands = FALSE,
+    masspoints = "off", bwcheck = NULL, kernel = "tri", vce = "hc0",
+    fitmethod = "joint"
+  )
+
+  expect_false(isTRUE(all.equal(
+    plain$main$estimate.p, adjusted$main$estimate.p, tolerance = 1e-8
+  )))
+  expect_true(adjusted$opt$covs.eff)
+  expect_equal(adjusted$opt$N.covs.eff, ncol(dat$cov))
+})
+
+test_that("joint and separate covs.eff distance fits agree for nonclustered HC0", {
+  dat <- make_distance_data(n = 600, seed = 20260618)
+  y.cov <- dat$y + as.numeric(dat$cov %*% c(0.7, -0.5))
+
+  joint <- rd2d.distance(
+    y.cov, dat$distance, h = 0.5, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, q = 2, covs.eff = dat$cov, cbands = TRUE,
+    masspoints = "off", bwcheck = NULL, kernel = "tri", vce = "hc0",
+    fitmethod = "joint", params.cov = "main"
+  )
+  separate <- rd2d.distance(
+    y.cov, dat$distance, h = 0.5, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, q = 2, covs.eff = dat$cov, cbands = TRUE,
+    masspoints = "off", bwcheck = NULL, kernel = "tri", vce = "hc0",
+    fitmethod = "separate", params.cov = "main"
+  )
+
+  expect_equal(joint$main, separate$main, tolerance = 1e-10, ignore_attr = TRUE)
+  expect_equal(joint$params.cov, separate$params.cov, tolerance = 1e-10)
+})
+
+test_that("rank-deficient covs.eff is dropped without changing distance fits", {
+  dat <- make_distance_data(n = 600, seed = 20260623)
+  y.cov <- dat$y + as.numeric(dat$cov %*% c(0.7, -0.5))
+  cov.dup <- cbind(dat$cov[, 1], dat$cov[, 1], dat$cov[, 2])
+
+  unique.fit <- rd2d.distance(
+    y.cov, dat$distance, h = 0.5, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, q = 2, covs.eff = dat$cov, cbands = TRUE,
+    masspoints = "off", bwcheck = NULL, kernel = "tri", vce = "hc1",
+    fitmethod = "joint", params.cov = "main"
+  )
+  expect_warning(
+    dup.fit <- rd2d.distance(
+      y.cov, dat$distance, h = 0.5, b = data.frame(x.1 = 0, x.2 = 0),
+      p = 1, q = 2, covs.eff = cov.dup, cbands = TRUE,
+      masspoints = "off", bwcheck = NULL, kernel = "tri", vce = "hc1",
+      fitmethod = "joint", params.cov = "main"
+    ),
+    "covs.eff is rank deficient"
+  )
+
+  expect_true(dup.fit$opt$covs.rank.deficient)
+  expect_equal(dup.fit$opt$N.covs.eff, 3)
+  expect_equal(dup.fit$opt$N.covs.used, 2)
+  expect_length(dup.fit$opt$covs.redundant, 1)
+  expect_length(dup.fit$opt$covs.dropped, 1)
+  expect_equal(dup.fit$main, unique.fit$main, tolerance = 1e-10, ignore_attr = TRUE)
+  expect_equal(dup.fit$params.cov, unique.fit$params.cov, tolerance = 1e-10)
+})
+
+test_that("rank-deficient covs.eff can use generalized inverse in distance fits", {
+  dat <- make_distance_data(n = 600, seed = 20260624)
+  cov.dup <- cbind(dat$cov[, 1], dat$cov[, 1], dat$cov[, 2])
+
+  expect_warning(
+    fit <- rd2d.distance(
+      dat$y, dat$distance, h = 0.5, b = data.frame(x.1 = 0, x.2 = 0),
+      p = 1, q = 2, covs.eff = cov.dup, covs.drop = FALSE,
+      cbands = FALSE, masspoints = "off", bwcheck = NULL,
+      kernel = "tri", vce = "hc0", fitmethod = "joint"
+    ),
+    "generalized inverse"
+  )
+
+  expect_true(fit$opt$covs.rank.deficient)
+  expect_equal(fit$opt$N.covs.used, 2)
+  expect_length(fit$opt$covs.redundant, 1)
+  expect_length(fit$opt$covs.dropped, 0)
+})
+
+test_that("automatic distance bandwidths pass fitmethod and covs.eff through", {
+  dat <- make_distance_data(n = 600, seed = 20260619)
+  y.cov <- dat$y + as.numeric(dat$cov %*% c(0.9, -0.6))
+  b <- data.frame(x.1 = 0, x.2 = 0)
+
+  bw <- rdbw2d.distance(
+    y.cov, dat$distance, b = b, p = 1, covs.eff = dat$cov,
+    vce = "hc0", masspoints = "off", bwcheck = NULL,
+    fitmethod = "separate"
+  )
+  fit <- rd2d.distance(
+    y.cov, dat$distance, b = b, p = 1, covs.eff = dat$cov,
+    vce = "hc0", masspoints = "off", bwcheck = NULL,
+    fitmethod = "separate"
+  )
+
+  expect_equal(fit$opt$fitmethod, "separate")
+  expect_true(fit$opt$covs.eff)
+  expect_equal(
+    fit$bw[, c("h0", "h1")],
+    bw$bws[, c("h0", "h1")],
+    tolerance = 1e-10,
+    ignore_attr = TRUE
+  )
+})
+
+test_that("rdbw2d.distance joint clustered bandwidths include cross-side covariance", {
+  dat <- make_distance_data(n = 650, seed = 20260622)
+  set.seed(20260622)
+  cluster <- sample(seq_len(65), length(dat$y), replace = TRUE)
+  cluster.effect <- rnorm(65, sd = 1.0)
+  y <- dat$y + cluster.effect[cluster]
+  crosses.side <- tapply(dat$x >= 0, cluster, function(x) length(unique(x)) > 1)
+  expect_true(any(unlist(crosses.side)))
+
+  joint <- rdbw2d.distance(
+    y, dat$distance, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, vce = "hc1", cluster = cluster,
+    masspoints = "off", bwcheck = NULL, fitmethod = "joint"
+  )
+  separate <- rdbw2d.distance(
+    y, dat$distance, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, vce = "hc1", cluster = cluster,
+    masspoints = "off", bwcheck = NULL, fitmethod = "separate"
+  )
+
+  expect_true(any(abs(joint$mseconsts$v.01) > 1e-12))
+  expect_equal(separate$mseconsts$v.01, rep(0, nrow(separate$mseconsts)))
+})
+
+test_that("rdbw2d.distance covs.eff affects bandwidth constants when covariates matter", {
+  dat <- make_distance_data(n = 650, seed = 20260620)
+  y.cov <- dat$y + as.numeric(dat$cov %*% c(1.1, -0.7))
+
+  plain <- rdbw2d.distance(
+    y.cov, dat$distance, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, vce = "hc0", masspoints = "off", bwcheck = NULL,
+    fitmethod = "joint"
+  )
+  adjusted <- rdbw2d.distance(
+    y.cov, dat$distance, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, covs.eff = dat$cov, vce = "hc0", masspoints = "off",
+    bwcheck = NULL, fitmethod = "joint"
+  )
+
+  expect_false(isTRUE(all.equal(
+    plain$mseconsts[, c("b.0", "b.1", "v.0", "v.1")],
+    adjusted$mseconsts[, c("b.0", "b.1", "v.0", "v.1")],
+    tolerance = 1e-8
+  )))
+  expect_true(adjusted$opt$covs.eff)
+})
+
+test_that("rank-deficient covs.eff is dropped without changing distance bandwidths", {
+  dat <- make_distance_data(n = 650, seed = 20260625)
+  y.cov <- dat$y + as.numeric(dat$cov %*% c(1.1, -0.7))
+  cov.dup <- cbind(dat$cov[, 1], dat$cov[, 1], dat$cov[, 2])
+
+  unique.bw <- rdbw2d.distance(
+    y.cov, dat$distance, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, covs.eff = dat$cov, vce = "hc1", masspoints = "off",
+    bwcheck = NULL, fitmethod = "joint"
+  )
+  expect_warning(
+    dup.bw <- rdbw2d.distance(
+      y.cov, dat$distance, b = data.frame(x.1 = 0, x.2 = 0),
+      p = 1, covs.eff = cov.dup, vce = "hc1", masspoints = "off",
+      bwcheck = NULL, fitmethod = "joint"
+    ),
+    "covs.eff is rank deficient"
+  )
+
+  expect_true(dup.bw$opt$covs.rank.deficient)
+  expect_equal(dup.bw$opt$N.covs.used, 2)
+  expect_equal(dup.bw$bws, unique.bw$bws, tolerance = 1e-10, ignore_attr = TRUE)
+  expect_equal(
+    dup.bw$mseconsts, unique.bw$mseconsts, tolerance = 1e-10,
+    ignore_attr = TRUE
+  )
+})
+
+test_that("fuzzy covs.eff distance fit returns finite component estimates", {
+  dat <- make_distance_data(n = 650, seed = 20260621)
+  y.cov <- dat$y.fuzzy + as.numeric(dat$cov %*% c(0.8, -0.6))
+
+  fit <- rd2d.distance(
+    y.cov, dat$distance, h = 0.55, b = data.frame(x.1 = 0, x.2 = 0),
+    p = 1, q = 2, fuzzy = dat$fuzzy, covs.eff = dat$cov,
+    cbands = FALSE, masspoints = "off", bwcheck = NULL,
+    kernel = "tri", vce = "hc0", fitmethod = "joint"
+  )
+
+  expect_true(all(is.finite(fit$main$estimate.p)))
+  expect_true(all(is.finite(fit$itt$estimate.p)))
+  expect_true(all(is.finite(fit$fs$estimate.p)))
+  expect_true(fit$opt$covs.eff)
+})
+
 test_that("summary.rd2d.distance reports WBATE and LBATE rows", {
   dat <- make_distance_data(n = 650, seed = 20260518)
   distance <- cbind(dat$x, 1.1 * dat$x, 0.9 * dat$x)
@@ -661,22 +1016,18 @@ test_that("fuzzy rd2d.distance aggregate inference requires requested covariance
 test_that("distance polynomial orders are nonnegative integers", {
   dat <- make_distance_data()
 
-  expect_output(
-    expect_error(
-      rd2d.distance(dat$y, dat$distance, h = 0.45, p = 1.5, masspoints = "off")
-    ),
+  expect_error(
+    rd2d.distance(dat$y, dat$distance, h = 0.45, p = 1.5, masspoints = "off"),
     "p must be a nonnegative integer"
   )
-  expect_output(
-    expect_error(
-      rd2d.distance(dat$y, dat$distance, h = 0.45, p = 2, q = 1, masspoints = "off")
+  expect_error(
+    rd2d.distance(
+      dat$y, dat$distance, h = 0.45, p = 2, q = 1, masspoints = "off"
     ),
     "q must be greater than or equal to p"
   )
-  expect_output(
-    expect_error(
-      rdbw2d.distance(dat$y, dat$distance, p = 1.5, masspoints = "off")
-    ),
+  expect_error(
+    rdbw2d.distance(dat$y, dat$distance, p = 1.5, masspoints = "off"),
     "p must be a nonnegative integer"
   )
 })

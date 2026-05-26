@@ -2,7 +2,7 @@
 * RD2D STATA PACKAGE -- rd2d_dist
 * Authors: Matias D. Cattaneo, Rocio Titiunik, Ruiqi Rae Yu
 ********************************************************************************
-*!version 0.2.0  2026-05-23
+*!version 1.0.0  2026-05-26
 
 capture program drop rd2d_dist
 program define rd2d_dist, eclass
@@ -13,12 +13,14 @@ program define rd2d_dist, eclass
 		   KERnel(string) Level(real 95) CBANDS SIDE(string) REPp(integer 1000) ///
 		   BWSELECT(string) BWPARAM(string) PARAMSOther(string) PARAMSCov(string) ///
 		   VCE(string) BWCHECK(integer -1) MASSpoints(string) ///
-		   CLuster(varname numeric) SCALEREGUL(real 1) CQT(real .5) ]
+		   CLuster(varname numeric) SCALEREGUL(real 1) CQT(real .5) ///
+		   FITMethod(string) COVSEFF(varlist numeric) ]
 
 	marksample touse
 	gettoken y distvars : varlist
 	markout `touse' `y' `distvars'
 	if "`fuzzy'" != "" markout `touse' `fuzzy'
+	if "`covseff'" != "" markout `touse' `covseff'
 	if "`cluster'" != "" markout `touse' `cluster'
 
 	if "`kernel'" == "" local kernel "tri"
@@ -27,6 +29,12 @@ program define rd2d_dist, eclass
 	if "`bwparam'" == "" local bwparam "main"
 	if "`vce'" == "" local vce "hc1"
 	if "`masspoints'" == "" local masspoints "check"
+	if "`fitmethod'" == "" local fitmethod "joint"
+	local fitmethod = lower("`fitmethod'")
+	if !inlist("`fitmethod'", "joint", "separate") {
+		di as error "fitmethod() must be joint or separate"
+		exit 198
+	}
 	if `bwcheck' < 0 local bwcheck = 50 + `p' + 1
 
 	local kink1 = 0
@@ -80,7 +88,7 @@ program define rd2d_dist, eclass
 		"`cluster'", "`touse'", st_local("b"), st_local("h"), `p', ///
 		`q', "`kernel'", "`vce'", `level', "`side'", "`bwselect'", ///
 		"`bwparam'", `bwcheck', `kink1', `kink2', st_local("kinkposition"), ///
-		`scaleregul', `cqt')
+		`scaleregul', `cqt', "`fitmethod'", "`covseff'")
 
 	local maincols b1 b2 estimate_p std_err_p estimate_q std_err_q t_value p_value ci_lower ci_upper h0 h1 h0_rbc h1_rbc N_Co N_Tr
 	local bwcols b1 b2 h0 h1 N_Co N_Tr
@@ -172,6 +180,8 @@ program define rd2d_dist, eclass
 	ereturn local bwparam "`bwparam'"
 	ereturn local masspoints "`masspoints'"
 	ereturn local fuzzy "`fuzzy'"
+	ereturn local fitmethod "`fitmethod'"
+	ereturn local covseff "`covseff'"
 
 	di as text _newline "Distance-based boundary discontinuity estimates"
 	matlist e(main), names(columns) format(%10.4f)
