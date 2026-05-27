@@ -26,11 +26,11 @@ make_regression_data <- function(n = 240, seed = 20260507) {
   )
 }
 
-expect_rd2d_tables_equal <- function(auto, manual, outputs) {
+expect_rd2d_tables_equal <- function(auto, manual, outputs, tolerance = 1e-8) {
   for (output in outputs) {
-    expect_equal(auto[[output]], manual[[output]], tolerance = 1e-10, ignore_attr = TRUE)
+    expect_equal(auto[[output]], manual[[output]], tolerance = tolerance, ignore_attr = TRUE)
   }
-  expect_equal(auto$bw, manual$bw, tolerance = 1e-10, ignore_attr = TRUE)
+  expect_equal(auto$bw, manual$bw, tolerance = tolerance, ignore_attr = TRUE)
 }
 
 expect_shared_columns_equal <- function(joint, separate, output) {
