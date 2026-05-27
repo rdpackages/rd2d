@@ -332,7 +332,7 @@ def main(show: bool = True) -> dict[str, object]:
         color="#a6611a",
     )
 
-    if show:
+    if show and matplotlib.get_backend().lower() != "agg":
         plt.show()
     return plots
 

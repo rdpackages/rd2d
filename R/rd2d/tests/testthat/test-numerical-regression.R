@@ -180,6 +180,29 @@ test_that("joint clustered covariance uses cross-side cluster scores", {
   }
 })
 
+test_that("location clustered covariance is invariant to cluster label representation", {
+  dat <- make_regression_data(seed = 20260621)
+  codes <- (seq_along(dat$y) * 7 + 11) %% 43
+  cluster.numeric <- codes * 10 + 3
+  cluster.character <- paste0("group-", 1000 - codes)
+
+  for (fitmethod in c("separate", "joint")) {
+    numeric.fit <- suppressWarnings(rd2d(
+      dat$y, dat$x, dat$z, dat$b, h = 0.95, cluster = cluster.numeric,
+      vce = "hc1", masspoints = "off", bwcheck = NULL,
+      fitmethod = fitmethod, params.cov = "main"
+    ))
+    character.fit <- suppressWarnings(rd2d(
+      dat$y, dat$x, dat$z, dat$b, h = 0.95, cluster = cluster.character,
+      vce = "hc1", masspoints = "off", bwcheck = NULL,
+      fitmethod = fitmethod, params.cov = "main"
+    ))
+
+    expect_equal(numeric.fit$main, character.fit$main, tolerance = 1e-10, ignore_attr = TRUE)
+    expect_equal(numeric.fit$params.cov$main, character.fit$params.cov$main, tolerance = 1e-10)
+  }
+})
+
 test_that("joint fuzzy clustered covariance changes only combined outputs", {
   dat <- make_regression_data(seed = 20260603)
   set.seed(20260603)

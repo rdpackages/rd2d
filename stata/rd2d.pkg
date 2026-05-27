@@ -5,7 +5,7 @@ d Authors: Matias D. Cattaneo, Princeton University, matias.d.cattaneo@gmail.com
 d          Rocio Titiunik, Princeton University, rocio.titiunik@gmail.com
 d          Ruiqi Rae Yu, Princeton University, raeyuuuu@gmail.com
 d
-d Distribution-Date: 20260526
+d Distribution-Date: 20260527
 d
 f rd2d.ado
 f rd2d.sthlp
@@ -19,7 +19,6 @@ f rd2d_distance.ado
 f rd2d_distance.sthlp
 f rdbw2d_distance.ado
 f rdbw2d_distance.sthlp
-f rd2d_functions.do
 f rd2d_illustration.do
 f rd2d_dist_illustration.do
 f rd2d_data.csv

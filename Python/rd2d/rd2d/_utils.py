@@ -280,6 +280,50 @@ def weighted_pinv_design(design: np.ndarray, weights: np.ndarray) -> tuple[np.nd
     return keep, X, inv_gram
 
 
+def cluster_indices(cluster_values: np.ndarray, groups=None) -> tuple[np.ndarray, np.ndarray]:
+    cluster_values = np.asarray(cluster_values)
+    if groups is None:
+        try:
+            groups, codes = np.unique(cluster_values, return_inverse=True)
+            return np.asarray(groups), np.asarray(codes, dtype=int)
+        except TypeError:
+            groups = pd.unique(cluster_values)
+    else:
+        groups = np.asarray(groups)
+
+    try:
+        order = np.argsort(groups, kind="mergesort")
+        sorted_groups = groups[order]
+        pos = np.searchsorted(sorted_groups, cluster_values)
+        valid = (pos >= 0) & (pos < len(sorted_groups))
+        if np.any(valid):
+            valid_idx = np.nonzero(valid)[0]
+            valid[valid_idx] = sorted_groups[pos[valid_idx]] == cluster_values[valid_idx]
+        codes = np.full(cluster_values.shape[0], -1, dtype=int)
+        codes[valid] = order[pos[valid]]
+        return groups, codes
+    except (TypeError, ValueError):
+        codes = pd.Categorical(cluster_values, categories=groups).codes
+        return groups, np.asarray(codes, dtype=int)
+
+
+def cluster_sums(values: np.ndarray, cluster_values: np.ndarray, groups=None, codes: np.ndarray | None = None) -> np.ndarray:
+    values = np.asarray(values, dtype=float)
+    if values.ndim == 1:
+        values = values.reshape(-1, 1)
+    if codes is None:
+        groups, codes = cluster_indices(cluster_values, groups)
+    else:
+        groups = np.asarray(groups)
+        codes = np.asarray(codes, dtype=int)
+    out = np.zeros((len(groups), values.shape[1]))
+    if values.shape[0] == 0:
+        return out
+    valid = codes >= 0
+    np.add.at(out, codes[valid], values[valid, :])
+    return out
+
+
 @dataclass
 class LocalFit:
     estimate: np.ndarray
@@ -296,6 +340,7 @@ def local_fit_targets(
     *,
     vce: str = "hc1",
     cluster: np.ndarray | None = None,
+    cluster_groups: np.ndarray | None = None,
     scale_override: float | None = None,
 ) -> LocalFit:
     outcomes_full = np.asarray(outcomes_full, dtype=float)
@@ -324,23 +369,32 @@ def local_fit_targets(
     score_base = (X * w[:, None]) @ row
     infl_kept = score_base[:, None] * resid * np.sqrt(adj)[:, None]
 
-    scale = 1.0
-    if scale_override is not None:
-        scale = float(scale_override)
-    elif vce == "hc1" and n_eff > k:
-        scale = n_eff / (n_eff - k)
-
     if cluster is not None:
         cluster_kept = np.asarray(cluster)[keep]
-        groups = pd.unique(cluster_kept)
-        summed = np.zeros((len(groups), outcomes_full.shape[1]))
-        for i, group in enumerate(groups):
-            summed[i, :] = np.sum(infl_kept[cluster_kept == group, :], axis=0)
-        if scale_override is None and vce == "hc1" and len(groups) > 1 and n_eff > k:
-            scale = (len(groups) / (len(groups) - 1.0)) * ((n_eff - 1.0) / (n_eff - k))
+        if cluster_groups is None:
+            groups, codes = cluster_indices(cluster_kept)
+            active_groups = len(groups)
+        else:
+            groups = np.asarray(cluster_groups)
+            _, codes = cluster_indices(cluster_kept, groups)
+            active_groups = int(np.unique(codes[codes >= 0]).size)
+        summed = cluster_sums(infl_kept, cluster_kept, groups, codes)
+        scale = 1.0
+        if scale_override is not None:
+            scale = float(scale_override)
+        elif n_eff > k:
+            if vce == "hc1":
+                scale *= n_eff / (n_eff - k)
+            if active_groups > 1:
+                scale *= ((n_eff - 1.0) / (n_eff - k)) * (active_groups / (active_groups - 1.0))
         cov = scale * (summed.T @ summed)
-        infl_source = summed
+        infl_source = np.sqrt(scale) * summed
     else:
+        scale = 1.0
+        if scale_override is not None:
+            scale = float(scale_override)
+        elif vce == "hc1" and n_eff > k:
+            scale = n_eff / (n_eff - k)
         cov = scale * (infl_kept.T @ infl_kept)
         infl_source = np.sqrt(scale) * infl_kept
 
@@ -350,17 +404,18 @@ def local_fit_targets(
     infl_full = np.zeros((design_full.shape[0], outcomes_full.shape[1]))
     if cluster is None:
         infl_full[keep, :] = infl_source
+    elif cluster_groups is not None:
+        infl_full = infl_source
     else:
         # For cross-evaluation covariance, keep cluster-level sums in rows
         # matching the first occurrence of each cluster. This preserves sums
         # without needing a second representation.
         cluster_all = np.asarray(cluster)
-        groups = pd.unique(cluster_all)
-        infl_full = np.zeros((len(groups), outcomes_full.shape[1]))
-        kept_groups = pd.unique(np.asarray(cluster)[keep])
-        group_to_row = {g: i for i, g in enumerate(groups)}
-        for j, g in enumerate(kept_groups):
-            infl_full[group_to_row[g], :] = infl_source[j, :]
+        all_groups, _ = cluster_indices(cluster_all)
+        infl_full = np.zeros((len(all_groups), outcomes_full.shape[1]))
+        _, group_rows = cluster_indices(groups, all_groups)
+        valid = group_rows >= 0
+        infl_full[group_rows[valid], :] = infl_source[valid, :]
 
     return LocalFit(estimate=np.asarray(estimate), se=se, influence=infl_full, n_eff=int(n_eff))
 

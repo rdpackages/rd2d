@@ -1767,7 +1767,7 @@ summary.rd2d <- function(object, ...) {
 
       if (covariance_available(cov.mat, nrow(result.all)) &&
           all(is.finite(result.all[["estimate.q"]]))) {
-        se <- sqrt(as.numeric(t(weights) %*% cov.mat %*% weights))
+        se <- sqrt(as.numeric(crossprod(weights, cov.mat %*% weights)))
         if (is.finite(se) && se > 0) {
           center <- sum(weights * result.all[["estimate.q"]])
           t.value <- center / se

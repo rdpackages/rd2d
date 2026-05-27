@@ -14,6 +14,7 @@ from ._utils import (
     check_lengths,
     ci_columns,
     complete_cases,
+    cluster_indices,
     covariance_from_influence,
     CovariateRankTracker,
     kernel_weights,
@@ -671,6 +672,7 @@ def _fit_distance_order(
     infl0 = [[None for _ in range(nout)] for _ in range(neval)]
     infl1 = [[None for _ in range(nout)] for _ in range(neval)]
     target = target_1d(p, 0)
+    cluster_groups = None if cluster is None else cluster_indices(cluster)[0]
     for j in range(neval):
         signed = dist[:, j]
         side1 = signed >= 0
@@ -723,6 +725,7 @@ def _fit_distance_order(
                 target,
                 vce=vce_local,
                 cluster=cluster,
+                cluster_groups=cluster_groups,
                 scale_override=scale0,
             )
             mu0[j, :] = fit0.estimate
@@ -740,6 +743,7 @@ def _fit_distance_order(
                 target,
                 vce=vce_local,
                 cluster=cluster,
+                cluster_groups=cluster_groups,
                 scale_override=scale1,
             )
             mu1[j, :] = fit1.estimate
@@ -762,11 +766,18 @@ def _stack_influence(infl: list[list[np.ndarray | None]], outcome: int) -> np.nd
     return np.vstack(rows)
 
 
-def _contrast_influence(fit: dict[str, Any], outcome: int) -> np.ndarray | None:
+def _combined_influence(
+    fit: dict[str, Any],
+    outcome: int,
+    fitmethod: str,
+    cluster,
+) -> np.ndarray | None:
     a = _stack_influence(fit["infl1"], outcome)
     b = _stack_influence(fit["infl0"], outcome)
     if a is None or b is None:
         return None
+    if cluster is not None and fitmethod == "separate":
+        return np.hstack((a, -b))
     return a - b
 
 
@@ -996,8 +1007,8 @@ def rd2d_distance(
     if not is_fuzzy:
         tau_p = fit_p["mu1"][:, 0] - fit_p["mu0"][:, 0]
         tau_q = fit_q["mu1"][:, 0] - fit_q["mu0"][:, 0]
-        infl_main_p = _contrast_influence(fit_p, 0)
-        infl_main_q = _contrast_influence(fit_q, 0)
+        infl_main_p = _combined_influence(fit_p, 0, fitmethod, cluster)
+        infl_main_q = _combined_influence(fit_q, 0, fitmethod, cluster)
         se_p = _se_from_influence(infl_main_p)
         se_q = _se_from_influence(infl_main_q)
         main = _make_distance_table(b_arr, tau_p, se_p, tau_q, se_q, h0, h1, h0_rbc, h1_rbc, fit_p["N0"], fit_p["N1"], level, side)
@@ -1047,10 +1058,10 @@ def rd2d_distance(
         with np.errstate(divide="ignore", invalid="ignore"):
             tau_p = itt_p / fs_p
             tau_q = itt_q / fs_q
-        infl_itt_p = _contrast_influence(fit_p, 0)
-        infl_fs_p = _contrast_influence(fit_p, 1)
-        infl_itt_q = _contrast_influence(fit_q, 0)
-        infl_fs_q = _contrast_influence(fit_q, 1)
+        infl_itt_p = _combined_influence(fit_p, 0, fitmethod, cluster)
+        infl_fs_p = _combined_influence(fit_p, 1, fitmethod, cluster)
+        infl_itt_q = _combined_influence(fit_q, 0, fitmethod, cluster)
+        infl_fs_q = _combined_influence(fit_q, 1, fitmethod, cluster)
         infl_main_p = infl_itt_p / fs_p[:, None] - (itt_p / (fs_p**2))[:, None] * infl_fs_p
         infl_main_q = infl_itt_q / fs_q[:, None] - (itt_q / (fs_q**2))[:, None] * infl_fs_q
         se_p = _se_from_influence(infl_main_p)

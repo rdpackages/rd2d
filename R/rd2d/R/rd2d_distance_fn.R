@@ -455,13 +455,13 @@ rdbw2d_distance_bw <- function(Y, distance, p = 1, kernel, target.vec = NULL,
     pmatrix.1 <- matrix(NA, nrow = eN.1, ncol = 1)
     pmatrix.0[,1] <- (eX.0/dn.0)^(p+1) * eweight.0
     pmatrix.1[,1] <- (eX.1/dn.1)^(p+1) * eweight.1
-    pmatrix.0 <- t(R.0.p) %*% pmatrix.0
-    pmatrix.1 <- t(R.1.p) %*% pmatrix.1
+    pmatrix.0 <- crossprod(R.0.p, pmatrix.0)
+    pmatrix.1 <- crossprod(R.1.p, pmatrix.1)
     dmm <- p+2
     coeff.0 <- rep(0, dmm)
     coeff.1 <- rep(0, dmm)
-    coeff.0[dmm] <- as.vector( t(as.matrix(vec)) %*% inv.gamma0.p %*% pmatrix.0 )
-    coeff.1[dmm] <- as.vector( t(as.matrix(vec)) %*% inv.gamma1.p %*% pmatrix.1 )
+    coeff.0[dmm] <- as.vector( vec %*% inv.gamma0.p %*% pmatrix.0 )
+    coeff.1[dmm] <- as.vector( vec %*% inv.gamma1.p %*% pmatrix.1 )
 
     # Compute bias constants for lp using p-th order model
 
@@ -492,8 +492,8 @@ rdbw2d_distance_bw <- function(Y, distance, p = 1, kernel, target.vec = NULL,
       V.half.1 <- as.vector(dn.1 * scores.1 %*% inv.gamma1.p %*% as.matrix(vec))
     }
 
-    V.p.0 <- t(as.matrix(vec)) %*% inv.gamma0.p %*% sigma.0.p %*% inv.gamma0.p %*% as.matrix(vec)
-    V.p.1 <- t(as.matrix(vec)) %*% inv.gamma1.p %*% sigma.1.p %*% inv.gamma1.p %*% as.matrix(vec)
+    V.p.0 <- vec %*% inv.gamma0.p %*% sigma.0.p %*% inv.gamma0.p %*% matrix(vec, ncol = 1)
+    V.p.1 <- vec %*% inv.gamma1.p %*% sigma.1.p %*% inv.gamma1.p %*% matrix(vec, ncol = 1)
     V.p.01 <- 0
     if ((joint || covariate.adjusted) && clustered) {
       if (joint) {
@@ -693,7 +693,8 @@ rd2d_distance_fit <- function(Y, distance, h, p, b, kernel, vce, bwcheck,
 
     sigma0.half <- eweight.0 * as.matrix(R.0); sigma1.half <- eweight.1 * as.matrix(R.1)
 
-    XtWY.0 <- t(matrix(eY.0 * unname(eweight.0), nrow = 1) %*% as.matrix(R.0)); XtWY.1 <-t(matrix(eY.1 * unname(eweight.1), nrow = 1) %*% as.matrix(R.1))
+    XtWY.0 <- crossprod(R.0, eY.0 * unname(eweight.0))
+    XtWY.1 <- crossprod(R.1, eY.1 * unname(eweight.1))
     hbeta.0 <- inv.gamma0 %*% XtWY.0; hbeta.1 <- inv.gamma1 %*% XtWY.1
     mu0 <- hbeta.0[1];  mu1 <- hbeta.1[1]
     res0 <- (eY.0 - as.matrix(R.0) %*% hbeta.0)[,1]
@@ -742,21 +743,12 @@ rd2d_distance_fit <- function(Y, distance, h, p, b, kernel, vce, bwcheck,
       cluster.df <- !(joint && clustered) && !(covariate.adjusted && clustered)
       w.w.0 <- if (cluster.df) ((n.0 - 1) / (n.0 - k - n.cov.i)) * (g.0 / (g.0 - 1)) else 1
       w.w.1 <- if (cluster.df) ((n.1 - 1) / (n.1 - k - n.cov.i)) * (g.1 / (g.1 - 1)) else 1
-      cov.half.const.0 <- matrix(0, nrow = g, ncol = k)
-      cov.half.const.1 <- matrix(0, nrow = g, ncol = k)
-
-      for (l in 1:g) {
-        ind.vce.0 <- as.logical(eC.0 == clusters[l])
-        ind.vce.1 <- as.logical(eC.1 == clusters[l])
-        w_R_i.0 <- sigma0.half[ind.vce.0,,drop=FALSE]
-        w_R_i.1 <- sigma1.half[ind.vce.1,,drop=FALSE]
-        resd_i.0 <- matrix(res0[ind.vce.0], ncol = 1)
-        resd_i.1 <- matrix(res1[ind.vce.1], ncol = 1)
-        w_R_resd_i.0 <- t(crossprod(w_R_i.0, resd_i.0)) * sqrt(w.w.0)
-        w_R_resd_i.1 <- t(crossprod(w_R_i.1, resd_i.1)) * sqrt(w.w.1)
-        cov.half.const.0[l,] <- as.vector(w_R_resd_i.0)
-        cov.half.const.1[l,] <- as.vector(w_R_resd_i.1)
-      }
+      cov.half.const.0 <- rd2d_cluster_sums(
+        sigma0.half * res0, eC.0, clusters
+      ) * sqrt(w.w.0)
+      cov.half.const.1 <- rd2d_cluster_sums(
+        sigma1.half * res1, eC.1, clusters
+      ) * sqrt(w.w.1)
       cov.half.const.0 <- cov.half.const.0 %*% inv.gamma0
       cov.half.const.1 <- cov.half.const.1 %*% inv.gamma1
       if (joint || covariate.adjusted) {
@@ -784,8 +776,8 @@ rd2d_distance_fit <- function(Y, distance, h, p, b, kernel, vce, bwcheck,
       sigma1.half, res1, eC.1, h.1, p + 1 + n.cov.i, cluster.df, clusters
     )
 
-    cov.const.0 <- t(inv.gamma0) %*% sigma.0 %*% inv.gamma0
-    cov.const.1 <- t(inv.gamma1) %*% sigma.1 %*% inv.gamma1
+    cov.const.0 <- crossprod(inv.gamma0, sigma.0 %*% inv.gamma0)
+    cov.const.1 <- crossprod(inv.gamma1, sigma.1 %*% inv.gamma1)
     if ((joint || covariate.adjusted) && clustered) {
       if (joint) {
         scale <- rd2d_joint_scale(

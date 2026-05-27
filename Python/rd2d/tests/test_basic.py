@@ -169,6 +169,64 @@ def test_location_fitmethod_and_covariates():
     assert fit_rank.opt["N.covs.used"] == 1
 
 
+def test_location_cluster_separate_covariance_is_side_additive():
+    y, _, x, z, _, b = make_location_data(n=420, seed=818)
+    cluster = np.arange(len(y)) % 35
+    fit = rd2d(
+        y,
+        x,
+        z,
+        b,
+        h=0.8,
+        vce="hc1",
+        cluster=cluster,
+        fitmethod="separate",
+        masspoints="off",
+        params_cov=["main", "main.0", "main.1"],
+    )
+    np.testing.assert_allclose(
+        fit.params_cov["main"],
+        fit.params_cov["main.0"] + fit.params_cov["main.1"],
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+
+def test_location_cluster_labels_are_partition_invariant():
+    y, _, x, z, _, b = make_location_data(n=420, seed=828)
+    codes = (np.arange(len(y)) * 7 + 11) % 43
+    numeric_cluster = codes * 10 + 3
+    string_cluster = np.asarray([f"group-{1000 - code}" for code in codes], dtype=object)
+
+    for fitmethod in ["separate", "joint"]:
+        fit_numeric = rd2d(
+            y,
+            x,
+            z,
+            b,
+            h=0.8,
+            vce="hc1",
+            cluster=numeric_cluster,
+            fitmethod=fitmethod,
+            masspoints="off",
+            params_cov="main",
+        )
+        fit_string = rd2d(
+            y,
+            x,
+            z,
+            b,
+            h=0.8,
+            vce="hc1",
+            cluster=string_cluster,
+            fitmethod=fitmethod,
+            masspoints="off",
+            params_cov="main",
+        )
+        np.testing.assert_allclose(fit_numeric.main.to_numpy(float), fit_string.main.to_numpy(float), rtol=1e-12, atol=1e-12)
+        np.testing.assert_allclose(fit_numeric.params_cov["main"], fit_string.params_cov["main"], rtol=1e-12, atol=1e-12)
+
+
 def test_distance_fitmethod_and_covariates():
     y, _, distance, _ = make_distance_data(seed=616)
     b = np.array([[0.0, 0.0]])
@@ -187,3 +245,60 @@ def test_distance_fitmethod_and_covariates():
     bw_cov = rdbw2d_distance(y, distance, b=b, covs_eff=covs, masspoints="off")
     assert bw_cov.opt["covs.eff"] is True
     assert list(bw_cov.bws.columns) == ["b1", "b2", "h0", "h1", "N.Co", "N.Tr"]
+
+
+def test_distance_cluster_separate_covariance_is_side_additive():
+    y, _, distance, _ = make_distance_data(n=420, seed=919)
+    b = np.array([[0.0, 0.0]])
+    cluster = np.arange(len(y)) % 35
+    fit = rd2d_distance(
+        y,
+        distance,
+        h=0.5,
+        b=b,
+        vce="hc1",
+        cluster=cluster,
+        fitmethod="separate",
+        cbands=False,
+        params_cov=["main", "main.0", "main.1"],
+    )
+    np.testing.assert_allclose(
+        fit.params_cov["main"],
+        fit.params_cov["main.0"] + fit.params_cov["main.1"],
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+
+def test_distance_cluster_labels_are_partition_invariant():
+    y, _, distance, _ = make_distance_data(n=420, seed=929)
+    b = np.array([[0.0, 0.0]])
+    codes = (np.arange(len(y)) * 11 + 5) % 37
+    numeric_cluster = codes * 100 + 17
+    string_cluster = np.asarray([f"site-{500 - code}" for code in codes], dtype=object)
+
+    for fitmethod in ["separate", "joint"]:
+        fit_numeric = rd2d_distance(
+            y,
+            distance,
+            h=0.5,
+            b=b,
+            vce="hc1",
+            cluster=numeric_cluster,
+            fitmethod=fitmethod,
+            cbands=False,
+            params_cov="main",
+        )
+        fit_string = rd2d_distance(
+            y,
+            distance,
+            h=0.5,
+            b=b,
+            vce="hc1",
+            cluster=string_cluster,
+            fitmethod=fitmethod,
+            cbands=False,
+            params_cov="main",
+        )
+        np.testing.assert_allclose(fit_numeric.main.to_numpy(float), fit_string.main.to_numpy(float), rtol=1e-12, atol=1e-12)
+        np.testing.assert_allclose(fit_numeric.params_cov["main"], fit_string.params_cov["main"], rtol=1e-12, atol=1e-12)

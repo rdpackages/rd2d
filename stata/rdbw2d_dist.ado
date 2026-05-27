@@ -55,9 +55,10 @@ program define rdbw2d_dist, eclass
 		capture quietly mata: mata mlib index
 		capture quietly mata: st_numscalar("`rd2d_mlib_ok'", rd2d_mlib_loaded())
 		if _rc {
-			local rd2d_loadonly 1
-			quietly findfile rd2d_functions.do
-			quietly do "`r(fn)'"
+			local rd2d_mlib_rc = _rc
+			di as error "rd2d Mata library lrd2d.mlib was not found or could not be loaded"
+			di as error "reinstall rd2d or rebuild lrd2d.mlib from rd2d_functions.do"
+			exit `rd2d_mlib_rc'
 		}
 		global RD2D_MATA_LOADED 1
 	}

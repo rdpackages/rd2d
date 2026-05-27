@@ -151,17 +151,38 @@ rd2d_distance_to_known_kink <- function(eval, kink.position) {
 ########################### Weight Calculation #################################
 
 kernel_weight = function(u,kernel){
-  kernel <- tolower(kernel)
-  abs.u <- abs(u)
   if (kernel == "triangular" || kernel == "tri") {
+    abs.u <- abs(u)
     return((1 - abs.u) * (abs.u <= 1))
   }
   if (kernel == "uniform" || kernel == "uni") {
+    abs.u <- abs(u)
     return(0.5 * (abs.u <= 1))
   }
   if (kernel == "gaussian" || kernel == "gau") {
     return(dnorm(u))
   }
+  if (kernel == "epanechnikov" || kernel == "epa") {
+    abs.u <- abs(u)
+    return(0.75 * (1 - u^2) * (abs.u <= 1))
+  }
+  kernel <- tolower(kernel)
+  if (kernel == "triangular" || kernel == "tri") {
+    abs.u <- abs(u)
+    return((1 - abs.u) * (abs.u <= 1))
+  }
+  if (kernel == "uniform" || kernel == "uni") {
+    abs.u <- abs(u)
+    return(0.5 * (abs.u <= 1))
+  }
+  if (kernel == "gaussian" || kernel == "gau") {
+    return(dnorm(u))
+  }
+  if (kernel == "epanechnikov" || kernel == "epa") {
+    abs.u <- abs(u)
+    return(0.75 * (1 - u^2) * (abs.u <= 1))
+  }
+  abs.u <- abs(u)
   0.75 * (1 - u^2) * (abs.u <= 1)
 }
 
@@ -292,16 +313,17 @@ rdbw2d_bw_v2 <- function(dat.centered, p, vec, dn, bn.1,
 
   eC.v <- cluster[ind.v]
 
-  eu.v <- cbind(dat.centered$x.1[ind.v] / dn, dat.centered$x.2[ind.v] / dn)
+  eu.x1.v <- dat.centered$x.1[ind.v] / dn
+  eu.x2.v <- dat.centered$x.2[ind.v] / dn
 
   if (is.null(bn.2)){
-    eR.v.aug <- as.matrix(get_basis(eu.v,p+1))
+    eR.v.aug <- get_basis_xy(eu.x1.v, eu.x2.v, p + 1)
     p.count <- factorial(p+2)/(factorial(p)*2)
     p1.count <- factorial(p+1+2)/(factorial(p+1)*2)
     eR.v <- eR.v.aug[,1:p.count, drop = FALSE]
     eS.v <- eR.v.aug[,(p.count + 1):p1.count, drop = FALSE]
   } else {
-    eR.v.aug <- as.matrix(get_basis(eu.v,p+2))
+    eR.v.aug <- get_basis_xy(eu.x1.v, eu.x2.v, p + 2)
     p.count <- factorial(p+2)/(factorial(p)*2)
     p1.count <- factorial(p+1+2)/(factorial(p+1)*2)
     p2.count <- factorial(p+2+2)/(factorial(p+2)*2)
@@ -549,9 +571,9 @@ rd2d_fit <- function(dat, eval, deriv = NULL,o = 0, p = 1,
   }
 
   # Standardize: if hgrid.0 is a vector, convert it to a m by 1 data frame
-  hgrid.0 <- as.data.frame(hgrid.0)
+  hgrid.0 <- as.matrix(hgrid.0)
   if (!is.null(hgrid.1)) {
-    hgrid.1 <- as.data.frame(hgrid.1)
+    hgrid.1 <- as.matrix(hgrid.1)
   }
 
   if (ncol(hgrid.0) == 1){
@@ -568,6 +590,21 @@ rd2d_fit <- function(dat, eval, deriv = NULL,o = 0, p = 1,
     )
   }
 
+  side.0 <- dat$d == 0
+  side.1 <- dat$d == 1
+  cluster.0 <- cluster[side.0]
+  cluster.1 <- cluster[side.1]
+  dat.centered <- dat
+  covariate.adjusted <- !is.null(cov.names)
+  if (!covariate.adjusted) {
+    dat.0 <- dat[side.0, , drop = FALSE]
+    dat.1 <- dat[side.1, , drop = FALSE]
+    x1.0 <- dat.0$x.1
+    x2.0 <- dat.0$x.2
+    x1.1 <- dat.1$x.1
+    x2.1 <- dat.1$x.2
+  }
+
   for (i in 1:neval){
 
     ev <- eval[i,]
@@ -575,20 +612,6 @@ rd2d_fit <- function(dat, eval, deriv = NULL,o = 0, p = 1,
     h.0 <- hgrid.0[i,]
     h.1 <- h.0
     if (!is.null(hgrid.1)) h.1 <- hgrid.1[i,]
-
-    # Center data
-
-    dat.centered <- dat[,c("x.1", "x.2", "y", "d", cov.names)]
-    dat.centered$x.1 <- dat.centered$x.1 - ev$x.1
-    dat.centered$x.2 <- dat.centered$x.2 - ev$x.2
-    # For product kernel, standardize covariates to have the same sd.
-    dat.centered$distance <- pmax(
-      abs(dat.centered$x.1/sd.x1),
-      abs(dat.centered$x.2/sd.x2)
-    )
-    if (kernel_type == "rad") {
-      dat.centered$distance <- sqrt(dat.centered$x.1^2 + dat.centered$x.2^2)
-    }
 
     if (!is.null(bwcheck)){
       bw.min.0 <- bwcheck.bounds[i, "min.0"]
@@ -620,24 +643,51 @@ rd2d_fit <- function(dat, eval, deriv = NULL,o = 0, p = 1,
       }
     }
 
-    dat.fit <- dat.centered
-    if (!is.null(cov.names)) {
+    if (covariate.adjusted) {
+      dat.centered$x.1 <- dat$x.1 - ev$x.1
+      dat.centered$x.2 <- dat$x.2 - ev$x.2
+      # For product kernel, standardize covariates to have the same sd.
+      dat.centered$distance <- pmax(
+        abs(dat.centered$x.1/sd.x1),
+        abs(dat.centered$x.2/sd.x2)
+      )
+      if (kernel_type == "rad") {
+        dat.centered$distance <- sqrt(dat.centered$x.1^2 + dat.centered$x.2^2)
+      }
       gamma <- rd2d_covariate_gamma(
         dat.centered, h.0, h.1, p, kernel, kernel_type, "y", cov.names
       )
       dat.fit <- rd2d_apply_covariate_adjustment(
         dat.centered, "y", cov.names, gamma
       )
+      fit.0.p <- rd2d_lm(
+        dat.fit[side.0,], h.0, p, vce, kernel = kernel,
+        cluster = cluster.0, varr = TRUE, kernel_type = kernel_type
+      )
+      fit.1.p <- rd2d_lm(
+        dat.fit[side.1,], h.1, p, vce, kernel = kernel,
+        cluster = cluster.1, varr = TRUE, kernel_type = kernel_type
+      )
+    } else {
+      dat.0$x.1 <- x1.0 - ev$x.1
+      dat.0$x.2 <- x2.0 - ev$x.2
+      dat.1$x.1 <- x1.1 - ev$x.1
+      dat.1$x.2 <- x2.1 - ev$x.2
+      dat.0$distance <- pmax(abs(dat.0$x.1/sd.x1), abs(dat.0$x.2/sd.x2))
+      dat.1$distance <- pmax(abs(dat.1$x.1/sd.x1), abs(dat.1$x.2/sd.x2))
+      if (kernel_type == "rad") {
+        dat.0$distance <- sqrt(dat.0$x.1^2 + dat.0$x.2^2)
+        dat.1$distance <- sqrt(dat.1$x.1^2 + dat.1$x.2^2)
+      }
+      fit.0.p <- rd2d_lm(
+        dat.0, h.0, p, vce, kernel = kernel,
+        cluster = cluster.0, varr = TRUE, kernel_type = kernel_type
+      )
+      fit.1.p <- rd2d_lm(
+        dat.1, h.1, p, vce, kernel = kernel,
+        cluster = cluster.1, varr = TRUE, kernel_type = kernel_type
+      )
     }
-
-    fit.0.p <- rd2d_lm(
-      dat.fit[dat.fit$d == 0,], h.0, p, vce, kernel = kernel,
-      cluster = cluster[dat.fit$d == 0], varr = TRUE, kernel_type = kernel_type
-    )
-    fit.1.p <- rd2d_lm(
-      dat.fit[dat.fit$d == 1,], h.1, p, vce, kernel = kernel,
-      cluster = cluster[dat.fit$d == 1], varr = TRUE, kernel_type = kernel_type
-    )
     mu.0 <- (vec %*% fit.0.p$beta)[1,1]
     mu.1 <- (vec %*% fit.1.p$beta)[1,1]
 
@@ -731,8 +781,8 @@ rd2d_fit_multi <- function(dat, eval, deriv = NULL, o = 0, p = 1,
     )
   }
 
-  hgrid.0 <- as.data.frame(hgrid.0)
-  if (!is.null(hgrid.1)) hgrid.1 <- as.data.frame(hgrid.1)
+  hgrid.0 <- as.matrix(hgrid.0)
+  if (!is.null(hgrid.1)) hgrid.1 <- as.matrix(hgrid.1)
 
   make_results <- function() {
     if (ncol(hgrid.0) == 1){
@@ -759,6 +809,15 @@ rd2d_fit_multi <- function(dat, eval, deriv = NULL, o = 0, p = 1,
   cluster.0 <- cluster[side.0]
   cluster.1 <- cluster[side.1]
   dat.centered <- dat
+  covariate.adjusted <- !is.null(cov.names)
+  if (!covariate.adjusted) {
+    dat.0 <- dat[side.0, , drop = FALSE]
+    dat.1 <- dat[side.1, , drop = FALSE]
+    x1.0 <- dat.0$x.1
+    x2.0 <- dat.0$x.2
+    x1.1 <- dat.1$x.1
+    x2.1 <- dat.1$x.2
+  }
 
   for (i in 1:neval){
     ev <- eval[i,]
@@ -766,16 +825,6 @@ rd2d_fit_multi <- function(dat, eval, deriv = NULL, o = 0, p = 1,
     h.0 <- hgrid.0[i,]
     h.1 <- h.0
     if (!is.null(hgrid.1)) h.1 <- hgrid.1[i,]
-
-    dat.centered$x.1 <- dat$x.1 - ev$x.1
-    dat.centered$x.2 <- dat$x.2 - ev$x.2
-    dat.centered$distance <- pmax(
-      abs(dat.centered$x.1/sd.x1),
-      abs(dat.centered$x.2/sd.x2)
-    )
-    if (kernel_type == "rad") {
-      dat.centered$distance <- sqrt(dat.centered$x.1^2 + dat.centered$x.2^2)
-    }
 
     if (!is.null(bwcheck)){
       bw.min.0 <- bwcheck.bounds[i, "min.0"]
@@ -806,26 +855,54 @@ rd2d_fit_multi <- function(dat, eval, deriv = NULL, o = 0, p = 1,
       }
     }
 
-    dat.fit <- dat.centered
-    if (!is.null(cov.names)) {
+    if (covariate.adjusted) {
+      dat.centered$x.1 <- dat$x.1 - ev$x.1
+      dat.centered$x.2 <- dat$x.2 - ev$x.2
+      dat.centered$distance <- pmax(
+        abs(dat.centered$x.1/sd.x1),
+        abs(dat.centered$x.2/sd.x2)
+      )
+      if (kernel_type == "rad") {
+        dat.centered$distance <- sqrt(dat.centered$x.1^2 + dat.centered$x.2^2)
+      }
       gamma <- rd2d_covariate_gamma(
         dat.centered, h.0, h.1, p, kernel, kernel_type, outcomes, cov.names
       )
       dat.fit <- rd2d_apply_covariate_adjustment(
         dat.centered, outcomes, cov.names, gamma
       )
+      fit.0.p <- rd2d_lm_multi(
+        dat.fit[side.0,], h.0, p, vce, kernel = kernel,
+        cluster = cluster.0, varr = TRUE, kernel_type = kernel_type,
+        outcomes = outcomes
+      )
+      fit.1.p <- rd2d_lm_multi(
+        dat.fit[side.1,], h.1, p, vce, kernel = kernel,
+        cluster = cluster.1, varr = TRUE, kernel_type = kernel_type,
+        outcomes = outcomes
+      )
+    } else {
+      dat.0$x.1 <- x1.0 - ev$x.1
+      dat.0$x.2 <- x2.0 - ev$x.2
+      dat.1$x.1 <- x1.1 - ev$x.1
+      dat.1$x.2 <- x2.1 - ev$x.2
+      dat.0$distance <- pmax(abs(dat.0$x.1/sd.x1), abs(dat.0$x.2/sd.x2))
+      dat.1$distance <- pmax(abs(dat.1$x.1/sd.x1), abs(dat.1$x.2/sd.x2))
+      if (kernel_type == "rad") {
+        dat.0$distance <- sqrt(dat.0$x.1^2 + dat.0$x.2^2)
+        dat.1$distance <- sqrt(dat.1$x.1^2 + dat.1$x.2^2)
+      }
+      fit.0.p <- rd2d_lm_multi(
+        dat.0, h.0, p, vce, kernel = kernel,
+        cluster = cluster.0, varr = TRUE, kernel_type = kernel_type,
+        outcomes = outcomes
+      )
+      fit.1.p <- rd2d_lm_multi(
+        dat.1, h.1, p, vce, kernel = kernel,
+        cluster = cluster.1, varr = TRUE, kernel_type = kernel_type,
+        outcomes = outcomes
+      )
     }
-
-    fit.0.p <- rd2d_lm_multi(
-      dat.fit[side.0,], h.0, p, vce, kernel = kernel,
-      cluster = cluster.0, varr = TRUE, kernel_type = kernel_type,
-      outcomes = outcomes
-    )
-    fit.1.p <- rd2d_lm_multi(
-      dat.fit[side.1,], h.1, p, vce, kernel = kernel,
-      cluster = cluster.1, varr = TRUE, kernel_type = kernel_type,
-      outcomes = outcomes
-    )
 
     if (length(h.0) == 1){
       h.0.x <- as.numeric(h.0)
@@ -1251,6 +1328,14 @@ rd2d_cov_project_sides <- function(dat, eval, deriv, p, hgrid.0,
   cluster.df <- !(joint && clustered) && !(covariate.adjusted && clustered)
   get_half <- if (multi) get_cov_half_multi_v2 else get_cov_half_v2
   dat.centered <- dat
+  if (!covariate.adjusted) {
+    dat.0 <- dat[side.0, , drop = FALSE]
+    dat.1 <- dat[side.1, , drop = FALSE]
+    x1.0 <- dat.0$x.1
+    x2.0 <- dat.0$x.2
+    x1.1 <- dat.1$x.1
+    x2.1 <- dat.1$x.2
+  }
 
   for (i in seq_len(neval)) {
     ev <- eval[i,]
@@ -1258,13 +1343,12 @@ rd2d_cov_project_sides <- function(dat, eval, deriv, p, hgrid.0,
     h.1 <- h.0
     if (!is.null(hgrid.1)) h.1 <- hgrid.1[i,]
 
-    dat.centered$x.1 <- dat$x.1 - ev$x.1
-    dat.centered$x.2 <- dat$x.2 - ev$x.2
-    dat.centered$distance <- sqrt(dat.centered$x.1^2 + dat.centered$x.2^2)
-
-    dat.fit <- dat.centered
     n.cov <- 0L
     if (covariate.adjusted) {
+      dat.centered$x.1 <- dat$x.1 - ev$x.1
+      dat.centered$x.2 <- dat$x.2 - ev$x.2
+      dat.centered$distance <- sqrt(dat.centered$x.1^2 + dat.centered$x.2^2)
+
       outcomes <- if (multi) c("y", "fuzzy") else "y"
       gamma <- rd2d_covariate_gamma(
         dat.centered, h.0, h.1, p, kernel, kernel_type, outcomes, cov.names
@@ -1273,16 +1357,31 @@ rd2d_cov_project_sides <- function(dat, eval, deriv, p, hgrid.0,
       dat.fit <- rd2d_apply_covariate_adjustment(
         dat.centered, outcomes, cov.names, gamma
       )
-    }
+      half.0 <- get_half(
+        dat.fit[side.0,], h.0, p, vce.half, kernel, kernel_type,
+        cluster.0, clusters, cluster.df = cluster.df
+      )
+      half.1 <- get_half(
+        dat.fit[side.1,], h.1, p, vce.half, kernel, kernel_type,
+        cluster.1, clusters, cluster.df = cluster.df
+      )
+    } else {
+      dat.0$x.1 <- x1.0 - ev$x.1
+      dat.0$x.2 <- x2.0 - ev$x.2
+      dat.0$distance <- sqrt(dat.0$x.1^2 + dat.0$x.2^2)
+      dat.1$x.1 <- x1.1 - ev$x.1
+      dat.1$x.2 <- x2.1 - ev$x.2
+      dat.1$distance <- sqrt(dat.1$x.1^2 + dat.1$x.2^2)
 
-    half.0 <- get_half(
-      dat.fit[side.0,], h.0, p, vce.half, kernel, kernel_type,
-      cluster.0, clusters, cluster.df = cluster.df
-    )
-    half.1 <- get_half(
-      dat.fit[side.1,], h.1, p, vce.half, kernel, kernel_type,
-      cluster.1, clusters, cluster.df = cluster.df
-    )
+      half.0 <- get_half(
+        dat.0, h.0, p, vce.half, kernel, kernel_type,
+        cluster.0, clusters, cluster.df = cluster.df
+      )
+      half.1 <- get_half(
+        dat.1, h.1, p, vce.half, kernel, kernel_type,
+        cluster.1, clusters, cluster.df = cluster.df
+      )
+    }
 
     inds.0[[i]] <- half.0$ind
     inds.1[[i]] <- half.1$ind
@@ -1611,6 +1710,17 @@ rdbw2d_se_fuzzy <- function(dat, eval, deriv = NULL, o = 0, p = 1,
     }
   }
 
+  side.0 <- dat$d == 0
+  side.1 <- dat$d == 1
+  dat.0 <- dat[side.0, c("x.1", "x.2", "y", "d", "fuzzy"), drop = FALSE]
+  dat.1 <- dat[side.1, c("x.1", "x.2", "y", "d", "fuzzy"), drop = FALSE]
+  x1.0 <- dat.0$x.1
+  x2.0 <- dat.0$x.2
+  x1.1 <- dat.1$x.1
+  x2.1 <- dat.1$x.2
+  cluster.0 <- if (is.null(cluster)) NULL else cluster[side.0]
+  cluster.1 <- if (is.null(cluster)) NULL else cluster[side.1]
+
   for (i in 1:neval){
     if (!valid[i]) next
 
@@ -1619,20 +1729,19 @@ rdbw2d_se_fuzzy <- function(dat, eval, deriv = NULL, o = 0, p = 1,
     h.a.1 <- h.a.0
     if (!is.null(hgrid.1)) h.a.1 <- hgrid.1[i,]
 
-    dat.centered <- dat[, c("x.1", "x.2", "y", "d", "fuzzy")]
-    dat.centered$x.1 <- dat.centered$x.1 - ev.a$x.1
-    dat.centered$x.2 <- dat.centered$x.2 - ev.a$x.2
-    dat.centered$distance <- sqrt(dat.centered$x.1^2 + dat.centered$x.2^2)
-
-    cluster.0 <- cluster[as.logical(dat.centered$d == 0)]
-    cluster.1 <- cluster[as.logical(dat.centered$d == 1)]
+    dat.0$x.1 <- x1.0 - ev.a$x.1
+    dat.0$x.2 <- x2.0 - ev.a$x.2
+    dat.0$distance <- sqrt(dat.0$x.1^2 + dat.0$x.2^2)
+    dat.1$x.1 <- x1.1 - ev.a$x.1
+    dat.1$x.2 <- x2.1 - ev.a$x.2
+    dat.1$distance <- sqrt(dat.1$x.1^2 + dat.1$x.2^2)
 
     cov.half.consts.0 <- get_cov_half_multi_v2(
-      dat.centered[dat.centered$d == 0,],
+      dat.0,
       h.a.0, p, vce, kernel, kernel_type, cluster.0, clusters
     )
     cov.half.consts.1 <- get_cov_half_multi_v2(
-      dat.centered[dat.centered$d == 1,],
+      dat.1,
       h.a.1, p, vce, kernel, kernel_type, cluster.1, clusters
     )
 
@@ -1648,7 +1757,7 @@ rdbw2d_se_fuzzy <- function(dat, eval, deriv = NULL, o = 0, p = 1,
         h.xy <- hxy(h.a.1)
       }
 
-      meat <- t(half) %*% half
+      meat <- crossprod(half)
       invH <- get_invH(h.xy,p)
       scale <- prod(h.xy)
       y.idx <- 1:k
@@ -1712,6 +1821,23 @@ rd2d_kernel_weights <- function(dat, h, kernel, kernel_type) {
   }
 }
 
+rd2d_extract_outcomes <- function(dat, outcomes, ind, n = NULL) {
+  outcomes <- as.character(outcomes)
+  if (is.null(n)) n <- sum(ind)
+  if (length(outcomes) == 1) {
+    eY <- matrix(dat[[outcomes]][ind], ncol = 1)
+    colnames(eY) <- outcomes
+    return(eY)
+  }
+
+  eY <- matrix(NA_real_, nrow = n, ncol = length(outcomes))
+  colnames(eY) <- outcomes
+  for (j in seq_along(outcomes)) {
+    eY[, j] <- dat[[outcomes[j]]][ind]
+  }
+  eY
+}
+
 rd2d_local_design <- function(dat, h, p, kernel, kernel_type, cluster = NULL,
                               outcomes = "y") {
   h <- rd2d_h_normalize(h, kernel_type)
@@ -1727,13 +1853,8 @@ rd2d_local_design <- function(dat, h, p, kernel, kernel_type, cluster = NULL,
   ind <- as.logical(w > 0)
   ew <- w[ind]
   sqrt.ew <- sqrt(ew)
-  if (length(outcomes) == 1) {
-    eY <- matrix(dat[[outcomes]][ind], ncol = 1)
-    colnames(eY) <- outcomes
-  } else {
-    eY <- do.call(cbind, lapply(outcomes, function(outcome) dat[[outcome]][ind]))
-    colnames(eY) <- outcomes
-  }
+  eN <- length(ew)
+  eY <- rd2d_extract_outcomes(dat, outcomes, ind, n = eN)
   eC <- cluster[ind]
 
   eR <- get_basis_xy(x.1[ind] / h.xy[1], x.2[ind] / h.xy[2], p)
@@ -1745,7 +1866,7 @@ rd2d_local_design <- function(dat, h, p, kernel, kernel_type, cluster = NULL,
     h = h,
     h.xy = h.xy,
     ind = ind,
-    eN = sum(ind),
+    eN = eN,
     ew = ew,
     sqrt.ew = sqrt.ew,
     eY = eY,
@@ -2344,7 +2465,7 @@ rd2d_lm <- function(dat, h, p, vce = "hc1", kernel = "epa",
     # sigma <- t(resd * as.matrix(sqrtw_R)) %*%
     #   (ew * resd * as.matrix(sqrtw_R)) * h^2
 
-    cov.const <- t(invG) %*% sigma %*% invG
+    cov.const <- crossprod(invG, sigma %*% invG)
   }
 
   return(list("beta" = beta, "cov.const" = cov.const, "eN" = eN))
@@ -2402,7 +2523,9 @@ rd2d_lm_multi <- function(dat, h, p, vce = "hc1", kernel = "epa",
       cov.const[[outcome]] <- rd2d_vce(
         w_R, resd[, outcome], eC, c(h.x, h.y)
       )
-      cov.const[[outcome]] <- t(invG) %*% cov.const[[outcome]] %*% invG
+      cov.const[[outcome]] <- crossprod(
+        invG, cov.const[[outcome]] %*% invG
+      )
     }
   }
 
@@ -2431,9 +2554,11 @@ get_coeff <- function(dat.centered,vec, p,dn, kernel, kernel_type){
   ew.v <- w.v[ind.v]
   eY.v <- dat.centered$y[ind.v]
 
-  eu.v <- cbind(dat.centered$x.1[ind.v] / dn, dat.centered$x.2[ind.v] / dn)
-
-  eR.v.aug <- as.matrix(get_basis(eu.v,p+1))
+  eR.v.aug <- get_basis_xy(
+    dat.centered$x.1[ind.v] / dn,
+    dat.centered$x.2[ind.v] / dn,
+    p + 1
+  )
   eR.v <- eR.v.aug[,1: (factorial(p+2)/(factorial(p)*2)), drop = FALSE]
   p.count <- factorial(p+2)/(factorial(p)*2)
   p1.count <- factorial(p+1+2)/(factorial(p+1)*2)

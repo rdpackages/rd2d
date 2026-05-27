@@ -506,6 +506,32 @@ test_that("joint clustered distance covariance uses cross-side cluster scores", 
   )
 })
 
+test_that("distance clustered covariance is invariant to cluster label representation", {
+  dat <- make_distance_data(n = 620, seed = 20260622)
+  b <- data.frame(x.1 = 0, x.2 = 0)
+  codes <- (seq_along(dat$y) * 11 + 5) %% 37
+  cluster.numeric <- codes * 100 + 17
+  cluster.character <- paste0("site-", 500 - codes)
+
+  for (fitmethod in c("separate", "joint")) {
+    numeric.fit <- rd2d.distance(
+      dat$y, dat$distance, h = 0.5, b = b, p = 1, q = 2,
+      cbands = TRUE, masspoints = "off", bwcheck = NULL,
+      kernel = "tri", vce = "hc1", cluster = cluster.numeric,
+      fitmethod = fitmethod, params.cov = "main"
+    )
+    character.fit <- rd2d.distance(
+      dat$y, dat$distance, h = 0.5, b = b, p = 1, q = 2,
+      cbands = TRUE, masspoints = "off", bwcheck = NULL,
+      kernel = "tri", vce = "hc1", cluster = cluster.character,
+      fitmethod = fitmethod, params.cov = "main"
+    )
+
+    expect_equal(numeric.fit$main, character.fit$main, tolerance = 1e-10, ignore_attr = TRUE)
+    expect_equal(numeric.fit$params.cov$main, character.fit$params.cov$main, tolerance = 1e-10)
+  }
+})
+
 test_that("zero covs.eff leaves fixed-bandwidth distance HC0 results unchanged", {
   dat <- make_distance_data(n = 550, seed = 20260616)
   z0 <- matrix(0, nrow = length(dat$y), ncol = 1)
