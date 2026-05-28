@@ -47,7 +47,7 @@ For overviews and introductions, see [rdpackages website](https://rdpackages.git
 
 ### Software and Implementation
 
-- Cattaneo, Titiunik and Yu (2025): [rd2d: Causal Inference in Boundary Discontinuity Designs](https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2025_rd2d.pdf).<br>
+- Cattaneo, Titiunik and Yu (2026): [rd2d: Causal Inference in Boundary Discontinuity Designs](https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2026_rd2d.pdf).<br>
 Working paper.
 
 
