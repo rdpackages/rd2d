@@ -61,7 +61,7 @@ _Journal of the American Statistical Association_, revise and resubmit.<br>
 [Supplemental Appendix](https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2026_JASA--Supplement.pdf).
 
 - Cattaneo, Titiunik and Yu (2026): [Estimation and Inference in Boundary Discontinuity Designs: Distance-Based Methods](https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2026_JOE.pdf).<br>
-_Journal of Econometrics_, revise and resubmit.<br>
+_Journal of Econometrics_ 256(A): 106266.<br>
 [Supplemental Appendix](https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2026_JOE--Supplement.pdf).
 
 - Cattaneo, Titiunik and Yu (2026): [Estimation and Inference in Boundary Discontinuity Designs: Pooling-Based Methods](https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2026_BDD-Pooling.pdf).<br>
