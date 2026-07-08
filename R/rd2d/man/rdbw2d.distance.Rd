@@ -151,7 +151,7 @@ with negative and non-negative signed distances, respectively.}
 \code{rdbw2d.distance} implements bandwidth selectors for distance-based local
 polynomial boundary discontinuity (BD) estimation and inference.
 The command targets level effects at two-dimensional boundary points.
-See \href{https://arxiv.org/abs/2510.26051}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026)}
+See \href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2026_JOE.pdf}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026)}
 for methodological background.
 }
 \examples{
@@ -202,8 +202,9 @@ print(bws.fuzzy)
 \itemize{
 \item{Cattaneo, M. D., and Titiunik, R. (2022).
 Regression Discontinuity Designs. \doi{10.1146/annurev-economics-051520-021409}.}
-\item{\href{https://arxiv.org/abs/2510.26051}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026).}
-Estimation and Inference in Boundary Discontinuity Designs: Distance-Based Methods.}
+\item{\href{https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2026_JOE.pdf}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026).}
+Estimation and Inference in Boundary Discontinuity Designs: Distance-Based Methods.
+\emph{Journal of Econometrics} 256(A): 106266.}
 \item{\href{https://arxiv.org/abs/2511.06474}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026).}
 Boundary Discontinuity Designs: Theory and Practice.}
 \item{\href{https://arxiv.org/abs/2505.07989}{Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2025).}

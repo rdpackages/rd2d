@@ -14,7 +14,7 @@ Description: Provides pointwise and uniform estimation and inference methods for
     Implements local polynomial methods for location-based and distance-based analyses, including sharp and fuzzy designs,
     data-driven bandwidth selection, pointwise confidence intervals, and uniform confidence bands. Methodology is developed in
     Cattaneo, Titiunik, and Yu (2026) <doi:10.48550/arXiv.2505.05670> for location-based methods and
-    Cattaneo, Titiunik, and Yu (2026) <doi:10.48550/arXiv.2510.26051> for distance-based methods.
+    Cattaneo, Titiunik, and Yu (2026, Journal of Econometrics 256(A): 106266) for distance-based methods.
     For an overview and empirical guidance, see Cattaneo, Titiunik, and Yu (2026) <doi:10.48550/arXiv.2511.06474>.
     The companion software article is Cattaneo, Titiunik, and Yu (2025) <doi:10.48550/arXiv.2505.07989>.
 Imports: MASS, expm, ggplot2
