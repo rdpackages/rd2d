@@ -1,10 +1,11 @@
 {smcl}
-{* *!version 1.0.0  2026-05-26}{...}
+{* *!version 1.0.1  2026-07-08}{...}
 {viewerjumpto "Syntax" "rd2d_dist##syntax"}{...}
 {viewerjumpto "Description" "rd2d_dist##description"}{...}
 {viewerjumpto "Options" "rd2d_dist##options"}{...}
 {viewerjumpto "Examples" "rd2d_dist##examples"}{...}
 {viewerjumpto "Stored results" "rd2d_dist##stored_results"}{...}
+{viewerjumpto "References" "rd2d_dist##references"}{...}
 
 {title:Title}
 
@@ -134,3 +135,8 @@
 {title:Stored results}
 
 {p 4 8}{cmd:rd2d_dist} stores {cmd:e(main)}, {cmd:e(bw)}, {cmd:e(V_main)}, and, when applicable, {cmd:e(itt)}, {cmd:e(fs)}, {cmd:e(itt_0)}, {cmd:e(itt_1)}, {cmd:e(fs_0)}, {cmd:e(fs_1)}, plus covariance matrices {cmd:e(V_itt)}, {cmd:e(V_fs)}, {cmd:e(V_itt_0)}, {cmd:e(V_itt_1)}, {cmd:e(V_fs_0)}, and {cmd:e(V_fs_1)}. Option labels include {cmd:e(fitmethod)} and {cmd:e(covseff)} when supplied.{p_end}
+
+{marker references}{...}
+{title:References}
+
+{p 4 8}Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026). Estimation and Inference in Boundary Discontinuity Designs: Distance-Based Methods. Journal of Econometrics 256(A): 106266.{p_end}

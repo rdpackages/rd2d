@@ -10,6 +10,8 @@ body:
       label: Implementation
       options:
         - R
+        - Python
+        - Stata
         - Documentation
         - Repository infrastructure
     validations:
@@ -35,4 +37,4 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Include package version, operating system, and R version.
+      description: Include package version, operating system, and the relevant R, Python, or Stata version.

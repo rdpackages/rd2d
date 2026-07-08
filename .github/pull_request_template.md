@@ -5,6 +5,8 @@
 ## Implementation
 
 - [ ] R
+- [ ] Python
+- [ ] Stata
 - [ ] Documentation
 - [ ] Repository infrastructure
 

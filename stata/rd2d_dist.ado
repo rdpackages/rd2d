@@ -2,7 +2,7 @@
 * RD2D STATA PACKAGE -- rd2d_dist
 * Authors: Matias D. Cattaneo, Rocio Titiunik, Ruiqi Rae Yu
 ********************************************************************************
-*!version 1.0.0  2026-05-26
+*!version 1.0.1  2026-07-08
 
 capture program drop rd2d_dist
 program define rd2d_dist, eclass

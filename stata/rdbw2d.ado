@@ -2,7 +2,7 @@
 * RD2D STATA PACKAGE -- rdbw2d
 * Authors: Matias D. Cattaneo, Rocio Titiunik, Ruiqi Rae Yu
 ********************************************************************************
-*!version 1.0.0  2026-05-26
+*!version 1.0.1  2026-07-08
 
 capture program drop rdbw2d
 program define rdbw2d, eclass

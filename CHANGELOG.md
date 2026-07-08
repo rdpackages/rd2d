@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-08
+
+### Stata Bug Fixes
+
+- Bumped the Stata package headers and distribution date to `1.0.1`.
+- Fixed `rd2d_dist` with fixed bandwidths when `covseff()` is omitted, avoiding
+  a Mata conformability error in the side-specific distance fit path.
+
+### Repository Infrastructure
+
+- Added Python and Stata to the GitHub issue and pull request implementation
+  options.
+
 ## 2026-05-23
 
 ### Python Package Metadata

@@ -1,10 +1,11 @@
 {smcl}
-{* *!version 1.0.0  2026-05-26}{...}
+{* *!version 1.0.1  2026-07-08}{...}
 {viewerjumpto "Syntax" "rdbw2d_dist##syntax"}{...}
 {viewerjumpto "Description" "rdbw2d_dist##description"}{...}
 {viewerjumpto "Options" "rdbw2d_dist##options"}{...}
 {viewerjumpto "Examples" "rdbw2d_dist##examples"}{...}
 {viewerjumpto "Stored results" "rdbw2d_dist##stored_results"}{...}
+{viewerjumpto "References" "rdbw2d_dist##references"}{...}
 
 {title:Title}
 
@@ -106,3 +107,8 @@
 {title:Stored results}
 
 {p 4 8}{cmd:rdbw2d_dist} stores {cmd:e(bws)}, {cmd:e(N)}, {cmd:e(p)}, and option labels in {cmd:e()}, including {cmd:e(fitmethod)} and {cmd:e(covseff)} when supplied.{p_end}
+
+{marker references}{...}
+{title:References}
+
+{p 4 8}Cattaneo, M. D., Titiunik, R., and Yu, R. R. (2026). Estimation and Inference in Boundary Discontinuity Designs: Distance-Based Methods. Journal of Econometrics 256(A): 106266.{p_end}

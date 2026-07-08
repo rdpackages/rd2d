@@ -2,7 +2,7 @@
 * RD2D STATA PACKAGE -- Mata functions
 * Authors: Matias D. Cattaneo, Rocio Titiunik, Ruiqi Rae Yu
 ********************************************************************************
-*!version 1.0.0  2026-05-26
+*!version 1.0.1  2026-07-08
 
 version 16.0
 
@@ -2146,7 +2146,7 @@ struct rd2d_orderfit scalar rd2d_fit_distance_order(real matrix outcomes, real m
 			scale1 = .
 			if ((fitmethod == "joint" | covadj) & (vce == "hc1" | clustered)) {
 				if (fitmethod == "joint") {
-					clactive = select(cluster0, w0 :> 0) \ select(cluster1, w1 :> 0)
+					clactive = clustered ? (select(cluster0, w0 :> 0) \ select(cluster1, w1 :> 0)) : J(0,1,.)
 					scale0 = rd2d_joint_vce_scale(vce, e0 + e1, 2*kpoly + n_cov, clactive, clustered)
 					scale1 = scale0
 				}

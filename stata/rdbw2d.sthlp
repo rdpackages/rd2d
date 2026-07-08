@@ -1,5 +1,5 @@
 {smcl}
-{* *!version 1.0.0  2026-05-26}{...}
+{* *!version 1.0.1  2026-07-08}{...}
 {viewerjumpto "Syntax" "rdbw2d##syntax"}{...}
 {viewerjumpto "Description" "rdbw2d##description"}{...}
 {viewerjumpto "Options" "rdbw2d##options"}{...}
