@@ -29,19 +29,19 @@ illustration workflow as the R and Stata examples. They do not create an
 ## Installation
 
 ```sh
-python -m pip install rd2d
+python3 -m pip install rd2d
 ```
 
 For local development:
 
 ```sh
-python -m pip install -e .
+python3 -m pip install -e .
 ```
 
 Optional plotting and testing dependencies can be installed with:
 
 ```sh
-python -m pip install -e ".[plots,test]"
+python3 -m pip install -e ".[plots,test]"
 ```
 
 ## Basic Usage
@@ -95,7 +95,7 @@ fit_dist.main
 From this directory:
 
 ```sh
-python -m pytest
+python3 -m pytest
 ```
 
 ## Publishing From GitHub

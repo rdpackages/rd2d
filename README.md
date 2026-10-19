@@ -11,7 +11,7 @@ The `rd2d` package implements pointwise and uniform estimation and inference for
 
 To install from PyPI:
 ```
-pip install rd2d
+python3 -m pip install rd2d
 ```
 
 - Illustration: [Dataset](Python/rd2d_data.csv),
@@ -56,7 +56,7 @@ Working paper.
 - Cattaneo, Titiunik and Yu (2026): [Boundary Discontinuity Designs: Theory and Practice](https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2026_ESWC.pdf).<br>
 Advances in Economics and Econometrics: Thirteenth World Congress, eds. R. Griffith, Y. Gorodnichenko, M. Kandori and F. Molinari, Cambridge University Press, Vol. 1, Ch. 2, to appear, 2026.
 
-- Cattaneo, Titiunik and Yu (2026): [Estimation and Inference in Boundary Discontinuity Designs: Location-Based Methods](https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2026_JASA.pdf).<br>
+- Cattaneo, Titiunik and Yu (2027): [Estimation and Inference in Boundary Discontinuity Designs: Location-Based Methods](https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2026_JASA.pdf).<br>
 _Journal of the American Statistical Association_, revise and resubmit.<br>
 [Supplemental Appendix](https://rdpackages.github.io/references/Cattaneo-Titiunik-Yu_2026_JASA--Supplement.pdf).
 

@@ -15,8 +15,8 @@ material.
 The illustration workflow is:
 
 ```sh
-python rd2d_illustration.py
-python rd2d_plot.py
+python3 rd2d_illustration.py
+python3 rd2d_plot.py
 ```
 
 Run the scripts from this directory. They use the current working directory and
